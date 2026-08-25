@@ -11,6 +11,7 @@ import { cartRouter } from './routes/cart.js';
 import { ordersRouter } from './routes/orders.js';
 import { merchantRouter } from './routes/merchant.js';
 import { observabilityRouter } from './routes/observability.js';
+import { agentRouter } from './routes/agent.js';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/', ordersRouter);
   app.use('/', merchantRouter);
   app.use('/', observabilityRouter);
+  app.use('/', agentRouter);
 
   app.use(errorHandler);
   return app;

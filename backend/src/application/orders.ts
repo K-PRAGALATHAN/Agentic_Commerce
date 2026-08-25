@@ -4,6 +4,7 @@ import type { Order } from '../domain/types.js';
 import { writeAudit } from './audit.js';
 import { writeIntentLedger } from './ledger.js';
 import { getCart, clearCart } from './cart.js';
+import { checkSpendLimit, type LimitCheck } from './guardrail.js';
 import { HttpError } from './auth.js';
 
 function mapOrder(r: any): Order {
@@ -18,17 +19,42 @@ function mapOrder(r: any): Order {
   };
 }
 
-// Create an order from the user's cart. INVARIANT: an intent-ledger entry is
-// written BEFORE the Razorpay order is created — no money intent without accountability.
+export type CheckoutResult =
+  | { gated: true; guard: LimitCheck }
+  | { gated: false; order: Order; razorpayOrderId: string; guard: LimitCheck };
+
+// Create an order from the user's cart.
+// INVARIANTS:
+//  1. BOUNDED — the guardrail checks the total against the effective limit FIRST.
+//     If over limit (and not explicitly confirmed), we block and route to conversational.
+//  2. GATED — an intent-ledger entry is written BEFORE the Razorpay order is created.
 export async function checkout(
   userId: string,
-  limitSnapshot: Record<string, unknown> = {},
-): Promise<{ order: Order; razorpayOrderId: string }> {
+  opts: { sessionLimitPaise?: number; confirmOverLimit?: boolean } = {},
+): Promise<CheckoutResult> {
   const cart = await getCart(userId);
   if (!cart.items.length) throw new HttpError(400, 'cart is empty');
 
-  // Gate: write intent to the hash-chained ledger first.
-  await writeIntentLedger(userId, { intent: 'buy', items: cart.items, total_paise: cart.totalPaise }, limitSnapshot);
+  // 1. BOUNDED — guardrail before anything.
+  const guard = await checkSpendLimit(userId, cart.totalPaise, opts.sessionLimitPaise);
+  if (!guard.allowed && !opts.confirmOverLimit) {
+    await writeAudit({
+      actor: 'system',
+      action: 'guardrail_block',
+      target: userId,
+      amountPaise: cart.totalPaise,
+      reason: `blocked: ${guard.reason} — routed to conversational confirmation`,
+      verified: false,
+    });
+    return { gated: true, guard };
+  }
+
+  // 2. GATED — write intent (with the limit snapshot) to the hash-chained ledger first.
+  await writeIntentLedger(
+    userId,
+    { intent: 'buy', items: cart.items, total_paise: cart.totalPaise, over_limit_confirmed: !!opts.confirmOverLimit },
+    guard,
+  );
 
   const rzp = await razorpay.createOrder(cart.totalPaise, `rcpt_${Date.now()}`);
 
@@ -46,11 +72,11 @@ export async function checkout(
     action: 'create_order',
     target: order.id,
     amountPaise: cart.totalPaise,
-    reason: `checkout of ${cart.items.length} item(s)`,
+    reason: `checkout of ${cart.items.length} item(s) — ${guard.reason}`,
     verified: false,
   });
 
-  return { order: mapOrder(order), razorpayOrderId: rzp.id };
+  return { gated: false, order: mapOrder(order), razorpayOrderId: rzp.id, guard };
 }
 
 // Confirm a payment. Verifies the signature SERVER-SIDE before marking paid.

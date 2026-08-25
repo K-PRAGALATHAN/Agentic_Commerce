@@ -5,7 +5,11 @@ import { dirname, join, resolve } from 'node:path';
 import { pool } from './pool.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = resolve(__dirname, '../../../../infra/migrations');
+// Native run: resolve relative to source. Docker: set MIGRATIONS_DIR (infra/ is
+// outside the backend build context, so it's mounted into the container instead).
+const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR
+  ? resolve(process.env.MIGRATIONS_DIR)
+  : resolve(__dirname, '../../../../infra/migrations');
 
 async function run() {
   await pool.query(`

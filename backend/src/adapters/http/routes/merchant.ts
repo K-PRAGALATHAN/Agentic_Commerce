@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createProduct, updateProduct, deleteProduct, listOwnProducts } from '../../../application/catalog.js';
+import { listRefundRequests, approveRefund, rejectRefund } from '../../../application/refunds.js';
+import { summarizeModelCost } from '../../../application/modelCost.js';
 import { writeAudit } from '../../../application/audit.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
@@ -55,5 +57,39 @@ merchantRouter.delete(
     await deleteProduct(req.user!.sub, req.params.id);
     await writeAudit({ actor: 'merchant', action: 'delete_product', target: req.params.id, reason: 'removed product' });
     res.status(204).end();
+  }),
+);
+
+// --- Refund approval (the GATE for money-out) ---
+merchantRouter.get(
+  '/merchant/refunds',
+  ...merchantOnly,
+  asyncHandler(async (_req, res) => {
+    res.json({ requests: await listRefundRequests('pending') });
+  }),
+);
+
+merchantRouter.post(
+  '/merchant/refunds/:id/approve',
+  ...merchantOnly,
+  asyncHandler(async (req, res) => {
+    res.json(await approveRefund(req.user!.sub, req.params.id));
+  }),
+);
+
+merchantRouter.post(
+  '/merchant/refunds/:id/reject',
+  ...merchantOnly,
+  asyncHandler(async (req, res) => {
+    res.json(await rejectRefund(req.user!.sub, req.params.id));
+  }),
+);
+
+// Merchant LLM-cost summary.
+merchantRouter.get(
+  '/merchant/model-cost',
+  ...merchantOnly,
+  asyncHandler(async (_req, res) => {
+    res.json(await summarizeModelCost());
   }),
 );

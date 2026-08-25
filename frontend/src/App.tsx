@@ -2,6 +2,7 @@ import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth.js';
 import { Login } from './pages/Login.js';
 import { Home } from './pages/Home.js';
+import { Chat } from './pages/Chat.js';
 import { Cart } from './pages/Cart.js';
 import { Orders } from './pages/Orders.js';
 import { Settings } from './pages/Settings.js';
@@ -21,6 +22,7 @@ export function App() {
       <nav className="nav glass">
         <span className="brand">🛒 Agentic Commerce</span>
         <NavLink to="/" end>Home</NavLink>
+        <NavLink to="/chat">AI</NavLink>
         <NavLink to="/cart">Cart</NavLink>
         <NavLink to="/orders">Orders</NavLink>
         {isMerchant && <NavLink to="/merchant">Merchant</NavLink>}
@@ -33,6 +35,7 @@ export function App() {
       <div className="container">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/settings" element={<Settings />} />

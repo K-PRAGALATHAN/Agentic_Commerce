@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query, withTransaction } from '../adapters/db/pool.js';
@@ -84,6 +85,52 @@ export function verifyAccess(token: string): TokenClaims {
 
 export async function me(userId: string): Promise<User> {
   return loadUser(userId);
+}
+
+// --- Password management ---------------------------------------------------
+// IMPORTANT: none of these touch users.id. The UUID is the identity that agents,
+// memory, orders, and ledgers key on; only the password_hash column changes.
+// So a reset re-issues a credential without changing WHO the user is.
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const res = await query<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = $1', [userId]);
+  if (!res.rowCount) throw new HttpError(404, 'user not found');
+  const ok = await bcrypt.compare(currentPassword, res.rows[0].password_hash);
+  if (!ok) throw new HttpError(400, 'current password is incorrect');
+  const hash = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+}
+
+const RESET_TTL_MS = 15 * 60 * 1000;
+const hashToken = (t: string) => createHash('sha256').update(t).digest('hex');
+
+// Returns the raw token so the caller can deliver it. In production this is EMAILED;
+// in dev we surface it in the response (see the route) so there's no email setup needed.
+export async function requestPasswordReset(email: string): Promise<string | null> {
+  const res = await query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
+  if (!res.rowCount) return null; // caller returns a generic message either way (no user enumeration)
+  const token = randomBytes(32).toString('hex');
+  await query(
+    'INSERT INTO password_resets(user_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+    [res.rows[0].id, hashToken(token), new Date(Date.now() + RESET_TTL_MS)],
+  );
+  return token;
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const hash = await bcrypt.hash(newPassword, 10);
+  await withTransaction(async (client) => {
+    const row = await client.query(
+      `SELECT id, user_id FROM password_resets
+        WHERE token_hash = $1 AND used = false AND expires_at > now()
+        ORDER BY created_at DESC LIMIT 1`,
+      [hashToken(token)],
+    );
+    if (!row.rowCount) throw new HttpError(400, 'invalid or expired reset token');
+    // Same user_id — identity unchanged; only the credential is replaced.
+    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, row.rows[0].user_id]);
+    await client.query('UPDATE password_resets SET used = true WHERE id = $1', [row.rows[0].id]);
+  });
 }
 
 export class HttpError extends Error {

@@ -34,4 +34,14 @@ export const api = {
   del: <T>(p: string) => request<T>('DELETE', p),
 };
 
+// Agent service (separate origin, proxied at /agent). Token attached, never shown to the model.
+export async function agentChat(message: string): Promise<{ reply: string; kind: string; data: any }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetch('/agent/chat', { method: 'POST', headers, body: JSON.stringify({ message }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as any).detail ?? (data as any).error ?? `HTTP ${res.status}`);
+  return data;
+}
+
 export const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;

@@ -34,4 +34,14 @@ export const config = {
   catalog: {
     sourceUrl: process.env.CATALOG_SOURCE_URL ?? 'https://dummyjson.com/products?limit=30',
   },
+
+  guardrail: {
+    // Merchant-wide ceiling per order (a bound no single purchase may exceed). ₹50,000 default.
+    merchantMaxOrderPaise: Number(process.env.MERCHANT_MAX_ORDER_PAISE ?? 5000000),
+  },
+
+  agent: {
+    // Agent-service base URL (for anything the backend needs to reach it).
+    url: process.env.AGENT_URL ?? 'http://localhost:8000',
+  },
 } as const;
