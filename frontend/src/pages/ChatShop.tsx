@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { agentChat, api, rupees } from '../lib/api.js';
 import { runCheckout } from '../lib/checkout.js';
 import { useAuth } from '../lib/auth.js';
 import { Sidebar } from '../components/Sidebar.js';
+import { listConvos, newConvo, upsertConvo, type Convo } from '../lib/conversations.js';
 import './chatshop.css';
 
 interface Prod { id: string; name: string; pricePaise: number; image?: string; rating?: number; category?: string; description?: string; }
@@ -29,10 +30,14 @@ const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL'];
 
 export function ChatShop() {
   const { user } = useAuth();
+  const uid = user?.id ?? 'anon';
   const nav = useNavigate();
-  const storeKey = `csthread:${user?.id ?? 'anon'}`;
+  const [params, setParams] = useSearchParams();
+  const activeId = params.get('c');
 
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [convo, setConvo] = useState<Convo | null>(null);
+  const msgs: Msg[] = convo?.msgs ?? [];
+  const title = convo?.title ?? 'New chat';
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<Prod | null>(null);
@@ -40,21 +45,22 @@ export function ChatShop() {
   const [size, setSize] = useState('M');
   const [cartCount, setCartCount] = useState(0);
   const [toast, setToast] = useState('');
-  const [title, setTitle] = useState('New chat');
   const endRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
+  // Load the active conversation (from ?c=), or the most recent, or a fresh one.
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(storeKey) || 'null');
-      if (saved?.msgs?.length) { setMsgs(saved.msgs); setTitle(saved.title || 'New chat'); return; }
-    } catch { /* ignore */ }
-    setMsgs([{ role: 'assistant', text: 'Hi! What are you looking for? Try "show me shirts" or "buy a blue shirt under ₹600".' }]);
-  }, [storeKey]);
+    const list = listConvos(uid);
+    const c = (activeId ? list.find((x) => x.id === activeId) : list[0]) ?? newConvo();
+    if (!list.find((x) => x.id === c.id)) upsertConvo(uid, c);
+    setConvo(c);
+    if (activeId !== c.id) setParams({ c: c.id }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, uid]);
 
-  useEffect(() => {
-    if (msgs.length) { try { localStorage.setItem(storeKey, JSON.stringify({ msgs, title })); } catch { /* ignore */ } }
-  }, [msgs, title, storeKey]);
+  function updateConvo(fn: (c: Convo) => Convo) {
+    setConvo((cur) => { if (!cur) return cur; const next = fn(cur); upsertConvo(uid, next); return next; });
+  }
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, busy]);
   useEffect(() => { refreshCart(); }, []);
@@ -63,14 +69,13 @@ export function ChatShop() {
     try { const { cart } = await api.get<any>('/cart'); setCartCount(cart.items.reduce((s: number, i: any) => s + i.qty, 0)); } catch { /* ignore */ }
   }
   const flash = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2000); };
-  const push = (m: Msg) => setMsgs((ms) => [...ms, m]);
+  const push = (m: Msg) => updateConvo((c) => ({ ...c, msgs: [...c.msgs, m], updatedAt: Date.now() }));
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
-    if (title === 'New chat') setTitle(text.slice(0, 40));
-    push({ role: 'user', text });
+    updateConvo((c) => ({ ...c, title: c.title === 'New chat' ? text.slice(0, 40) : c.title, msgs: [...c.msgs, { role: 'user', text }], updatedAt: Date.now() }));
     setInput(''); setBusy(true);
     try {
       const r = await agentChat(text);
