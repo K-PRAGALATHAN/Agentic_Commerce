@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react';
 import { api, rupees } from '../lib/api.js';
 
 interface Product { id: string; name: string; pricePaise: number; stock: number; category: string; }
+interface Refund { id: string; order_id: string; amount_paise: number; reason: string; requester_email: string; }
+interface Cost { totalCalls: number; totalCost: number; byModel: any[]; }
 const empty = { name: '', priceRupees: 0, stock: 0, category: '' };
 
 export function Merchant() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [cost, setCost] = useState<Cost | null>(null);
   const [form, setForm] = useState<any>(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
@@ -13,8 +17,18 @@ export function Merchant() {
   async function load() {
     const { products } = await api.get<{ products: Product[] }>('/merchant/products');
     setProducts(products);
+    try {
+      const r = await api.get<{ requests: Refund[] }>('/merchant/refunds');
+      setRefunds(r.requests);
+      setCost(await api.get<Cost>('/merchant/model-cost'));
+    } catch { /* non-fatal */ }
   }
   useEffect(() => { load(); }, []);
+
+  async function decideRefund(id: string, action: 'approve' | 'reject') {
+    try { await api.post(`/merchant/refunds/${id}/${action}`); setMsg(`Refund ${action}d`); await load(); }
+    catch (e: any) { setMsg(e.message); }
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +90,37 @@ export function Merchant() {
           ))}
         </tbody>
       </table>
+      <div className="title" style={{ fontSize: 16 }}>Refund requests (gated — approval required) {refunds.length > 0 && <span className="pill">{refunds.length} pending</span>}</div>
+      {!refunds.length && <p className="muted">No pending refund requests.</p>}
+      {refunds.map((r) => (
+        <div key={r.id} className="list-row glass row between">
+          <div>
+            <strong>{rupees(Number(r.amount_paise))}</strong> · <span className="muted">order {r.order_id.slice(0, 8)} · {r.requester_email}</span>
+            <div className="muted" style={{ fontSize: 12 }}>{r.reason}</div>
+          </div>
+          <div className="row">
+            <button onClick={() => decideRefund(r.id, 'approve')}>Approve</button>
+            <button className="danger" onClick={() => decideRefund(r.id, 'reject')}>Reject</button>
+          </div>
+        </div>
+      ))}
+
+      <div className="title" style={{ fontSize: 16 }}>LLM cost tracker</div>
+      <div className="list-row glass">
+        {cost ? (
+          <div className="row between">
+            <span>{cost.totalCalls} model calls</span>
+            <span className="price">₹{cost.totalCost.toFixed(4)}</span>
+          </div>
+        ) : <span className="muted">No model usage yet.</span>}
+        {cost?.byModel?.map((m: any) => (
+          <div key={m.model} className="row between muted" style={{ fontSize: 12 }}>
+            <span>{m.model}</span>
+            <span>{m.calls} calls · {m.tokens_in}/{m.tokens_out} tok · ₹{Number(m.cost).toFixed(4)}</span>
+          </div>
+        ))}
+      </div>
+
       {msg && <div className="toast glass">{msg}</div>}
     </>
   );

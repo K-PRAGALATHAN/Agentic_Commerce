@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import { api, rupees } from '../lib/api.js';
+import { loadRazorpay } from '../lib/razorpay.js';
 
 interface CartItem { productId: string; name: string; qty: number; pricePaise: number; }
 interface CartData { items: CartItem[]; totalPaise: number; }
+interface Guard { totalPaise: number; effectiveLimitPaise: number; reason: string; }
 
 export function Cart() {
   const [cart, setCart] = useState<CartData | null>(null);
   const [msg, setMsg] = useState('');
+  const [msgKind, setMsgKind] = useState<'ok' | 'bad' | ''>('');
+  const [gated, setGated] = useState<Guard | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -15,28 +19,52 @@ export function Cart() {
   }
   useEffect(() => { load(); }, []);
 
+  function say(text: string, kind: 'ok' | 'bad' | '' = '') { setMsg(text); setMsgKind(kind); }
+
   async function remove(id: string) {
     const { cart } = await api.del<{ cart: CartData }>(`/cart/items/${id}`);
     setCart(cart);
   }
 
-  async function checkout() {
-    setBusy(true); setMsg('');
+  // Full flow: create order → open Razorpay test widget → verify server-side → show result.
+  async function checkout(confirmOverLimit = false) {
+    setBusy(true); say(''); setGated(null);
     try {
-      const res = await api.post<any>('/orders/checkout');
-      if (res.razorpayKeyId) {
-        // Real Razorpay test checkout would open here (checkout.js) using res.razorpayOrderId.
-        setMsg('Order created. (Razorpay test widget opens here when keys are set.)');
-      } else {
-        setMsg('Order intent recorded.');
-      }
-      await load();
+      const res = await api.post<any>('/orders/checkout', confirmOverLimit ? { confirmOverLimit: true } : {});
+      if (res.gated) { setGated(res.guard); say(`Over your limit — ${res.guard.reason}.`, 'bad'); return; }
+      if (!res.razorpayKeyId) { say('Razorpay test keys not configured on the server.', 'bad'); return; }
+
+      const Razorpay = await loadRazorpay();
+      const rzp = new Razorpay({
+        key: res.razorpayKeyId,
+        order_id: res.razorpayOrderId,
+        amount: res.order.totalPaise,
+        currency: 'INR',
+        name: 'Agentic Commerce',
+        description: `Order ${String(res.order.id).slice(0, 8)}`,
+        handler: async (r: any) => {
+          // Success path → verify signature SERVER-SIDE before trusting it.
+          try {
+            const v = await api.post<any>(`/orders/${res.order.id}/confirm`, {
+              razorpay_order_id: r.razorpay_order_id,
+              razorpay_payment_id: r.razorpay_payment_id,
+              razorpay_signature: r.razorpay_signature,
+            });
+            if (v.verified) { say('✅ Payment verified and captured.', 'ok'); await load(); }
+            else say('Payment could not be verified — not charged.', 'bad');
+          } catch (e: any) { say(e.message, 'bad'); }
+        },
+        modal: { ondismiss: () => say('Payment cancelled — your cart is safe.', '') },
+        theme: { color: '#7aa2ff' },
+      });
+      // Graceful failure path (e.g. Razorpay failure test card).
+      rzp.on('payment.failed', (resp: any) => {
+        say(`❌ Payment failed (${resp.error?.description ?? 'declined'}). Your cart is intact — try again or use another method.`, 'bad');
+      });
+      rzp.open();
     } catch (e: any) {
-      // Graceful: e.g. keys not configured, or empty cart — shown, never a crash.
-      setMsg(e.message);
-    } finally {
-      setBusy(false);
-    }
+      say(e.message, 'bad');
+    } finally { setBusy(false); }
   }
 
   if (!cart) return <p className="muted">Loading cart…</p>;
@@ -62,11 +90,18 @@ export function Cart() {
           <strong>Total</strong>
           <div className="row">
             <span className="price" style={{ fontSize: 18 }}>{rupees(cart.totalPaise)}</span>
-            <button disabled={busy} onClick={checkout}>{busy ? '…' : 'Checkout'}</button>
+            {gated
+              ? <button className="danger" disabled={busy} onClick={() => checkout(true)}>Over limit — confirm & pay</button>
+              : <button disabled={busy} onClick={() => checkout(false)}>{busy ? '…' : 'Checkout'}</button>}
           </div>
         </div>
       )}
-      {msg && <div className="toast glass">{msg}</div>}
+      {gated && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Bounded by your spend limit ({rupees(gated.effectiveLimitPaise)}). Raise it in Settings, or confirm to proceed.
+        </p>
+      )}
+      {msg && <div className="toast glass" style={{ borderColor: msgKind === 'ok' ? 'var(--ok)' : msgKind === 'bad' ? 'var(--danger)' : 'var(--glass-brd)' }}>{msg}</div>}
     </>
   );
 }

@@ -62,7 +62,7 @@ async def _parse(message: str, run_id: str, tools: Tools) -> dict:
     ]
     try:
         res = await model.chat(prompt, temperature=0)
-        await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"])
+        await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
         data = model.extract_json(res["text"]) or {}
         return {
             "intent": data.get("intent", "shop"),
@@ -91,7 +91,7 @@ async def _explain(pick: dict, n: int, pref: str, run_id: str, tools: Tools) -> 
             {"role": "system", "content": "One friendly sentence on why this product is a good pick. No markdown."},
             {"role": "user", "content": f"Product: {pick['name']}, {rupees(pick['pricePaise'])}, rating {pick.get('rating')}, reason: {reason}."},
         ])
-        await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"])
+        await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
         return res["text"].strip()
     except Exception:
         return f"{base} — {reason}."
@@ -105,7 +105,7 @@ async def _general(message: str, ctx: dict, run_id: str, tools: Tools) -> dict:
                 {"role": "system", "content": "You are a concise shopping assistant for this store. If the message is off-topic, gently and wittily steer back to shopping. Keep it brief and brand-safe."},
                 {"role": "user", "content": message},
             ])
-            await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"])
+            await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
             return {"reply": res["text"].strip(), "kind": "general", "data": {}}
         except Exception:
             pass

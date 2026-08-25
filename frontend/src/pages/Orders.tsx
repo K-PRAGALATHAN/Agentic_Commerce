@@ -3,13 +3,25 @@ import { api, rupees } from '../lib/api.js';
 
 interface Order { id: string; totalPaise: number; status: string; createdAt: string; items: any[]; }
 
-const statusClass = (s: string) => (s === 'paid' ? 'badge-ok' : s === 'failed' ? 'badge-bad' : 'muted');
+const statusClass = (s: string) => (s === 'paid' ? 'badge-ok' : s === 'failed' ? 'badge-bad' : s === 'refunded' ? 'muted' : 'muted');
 
 export function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
-  useEffect(() => {
-    api.get<{ orders: Order[] }>('/orders').then((r) => setOrders(r.orders));
-  }, []);
+  const [msg, setMsg] = useState('');
+
+  async function load() {
+    const r = await api.get<{ orders: Order[] }>('/orders');
+    setOrders(r.orders);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function requestRefund(id: string) {
+    try {
+      await api.post(`/orders/${id}/refund/request`, { reason: 'requested from Orders' });
+      setMsg('Refund requested — awaiting merchant approval (money-out is gated).');
+      setTimeout(() => setMsg(''), 2600);
+    } catch (e: any) { setMsg(e.message); }
+  }
 
   return (
     <>
@@ -24,9 +36,11 @@ export function Orders() {
           <div className="row">
             <span className="price">{rupees(o.totalPaise)}</span>
             <span className={`pill ${statusClass(o.status)}`}>{o.status}</span>
+            {o.status === 'paid' && <button className="ghost" onClick={() => requestRefund(o.id)}>Request refund</button>}
           </div>
         </div>
       ))}
+      {msg && <div className="toast glass">{msg}</div>}
     </>
   );
 }

@@ -60,8 +60,8 @@ class Tools:
         body = {"confirmOverLimit": True} if confirm_over_limit else {}
         return await self._post("/orders/checkout", body)
 
-    async def log_model_cost(self, run_id: str, model: str, tokens_in: int, tokens_out: int) -> None:
+    async def log_model_cost(self, run_id: str, model: str, tokens_in: int, tokens_out: int, cost: float = 0.0) -> None:
         try:
-            await self._post("/agent/model-cost", {"runId": run_id, "model": model, "tokensIn": tokens_in, "tokensOut": tokens_out, "cost": 0})
+            await self._post("/agent/model-cost", {"runId": run_id, "model": model, "tokensIn": tokens_in, "tokensOut": tokens_out, "cost": cost})
         except Exception:
             pass  # telemetry must never break the conversation

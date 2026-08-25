@@ -20,6 +20,20 @@ def is_available() -> bool:
     return bool(API_KEY)
 
 
+# USD per 1M tokens (input, output). Extend as models are added.
+PRICING = {
+    "openai/gpt-5.6-luna": (0.20, 1.20),
+    "openai/gpt-4o-mini": (0.15, 0.60),
+}
+USD_TO_INR = 84.0
+
+
+def estimate_cost_inr(model_id: str, tokens_in: int, tokens_out: int) -> float:
+    pin, pout = PRICING.get(model_id, (0.0, 0.0))
+    usd = (tokens_in / 1_000_000) * pin + (tokens_out / 1_000_000) * pout
+    return round(usd * USD_TO_INR, 6)
+
+
 async def chat(messages: list[dict], temperature: float = 0.3) -> dict:
     """Call the model. Returns {'text', 'model', 'tokens_in', 'tokens_out'}.
 
