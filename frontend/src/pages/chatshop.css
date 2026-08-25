@@ -3,7 +3,7 @@
 .cs-app {
   position: fixed; inset: 0; display: grid; grid-template-columns: auto 1fr;
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #f5e7f0;
+  background: #fbe7f1; /* light pink frame — shows in the gap around the panel */
 }
 
 /* ---- Sidebar (light pink) ---- */
@@ -46,9 +46,10 @@
 
 /* ---- Main ---- */
 .cs-main {
-  background: #ffffff;
-  margin: 10px 10px 10px 0; border-radius: 22px; display: flex; flex-direction: column;
-  overflow: hidden; box-shadow: 0 18px 50px rgba(120,60,110,.15);
+  /* right panel — darker shade of the sidebar pink; gap all around shows the frame */
+  background: linear-gradient(135deg, #f0c4de 0%, #e8b0d3 55%, #e2a4cc 100%);
+  margin: 14px; border-radius: 22px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 18px 50px rgba(120,60,110,.20);
 }
 .cs-header { display: flex; align-items: center; justify-content: space-between;
   padding: 20px 28px; border-bottom: 1px solid #ececf3; }
