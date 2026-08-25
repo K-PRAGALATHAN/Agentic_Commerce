@@ -3,15 +3,15 @@
 .cs-app {
   position: fixed; inset: 0; display: grid; grid-template-columns: auto 1fr;
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #cf78a9; /* darker frame — shows as the strip in the gap around the panel */
+  background: #dd93bd; /* mid pink frame — darker than the inner panel, but softer */
 }
 
 /* ---- Sidebar (light pink) ---- */
 .cs-sidebar {
   width: 258px; transition: width .18s ease;
-  background: linear-gradient(180deg, #e39cc4 0%, #d886b4 55%, #cf78a9 100%);
+  background: linear-gradient(180deg, #ecb0d3 0%, #e29fc5 55%, #dd93bd 100%);
   color: #4a3350; padding: 18px 14px; display: flex; flex-direction: column; gap: 18px;
-  border-right: 1px solid #c96ea0;
+  border-right: 1px solid #d485b1;
 }
 .cs-sidebar.collapsed { width: 72px; padding: 18px 12px; }
 .cs-sidebar.collapsed .cs-nav-item span, .cs-sidebar.collapsed .cs-name,
