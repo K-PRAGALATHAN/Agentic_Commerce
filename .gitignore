@@ -1,0 +1,33 @@
+# --- Planning / spec docs (kept local, not pushed) ---
+plan/
+agents.md
+razorpay.md
+workflow.md
+development.md
+
+# (README.md is intentionally NOT ignored)
+
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- Node ---
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-error.log*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
