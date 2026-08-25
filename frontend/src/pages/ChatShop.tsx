@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { agentChat, api, rupees } from '../lib/api.js';
 import { runCheckout } from '../lib/checkout.js';
 import { useAuth } from '../lib/auth.js';
+import { Sidebar } from '../components/Sidebar.js';
 import './chatshop.css';
 
 interface Prod { id: string; name: string; pricePaise: number; image?: string; rating?: number; category?: string; description?: string; }
@@ -94,24 +95,9 @@ export function ChatShop() {
     rowRefs.current[i]?.scrollBy({ left: dir * 260, behavior: 'smooth' });
   }
 
-  const navItem = (icon: keyof typeof I, label: string, onClick?: () => void, active = false) => (
-    <div className={`cs-nav-item ${active ? 'active' : ''}`} onClick={onClick}>{I[icon]()}<span>{label}</span></div>
-  );
-
   return (
     <div className="cs-app">
-      <aside className="cs-sidebar">
-        <div className="cs-brand"><div className="cs-orb" />
-          <span className="cs-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></span>
-        </div>
-        <nav className="cs-nav">
-          {navItem('chats', 'Chats', undefined, true)}
-          {navItem('search', 'Search', () => nav('/'))}
-          {navItem('card', 'Manage subscription', () => flash('Subscriptions — coming soon'))}
-          {navItem('faq', 'Updates & FAQ', () => flash('Updates & FAQ — coming soon'))}
-          {navItem('gear', 'Settings', () => nav('/settings'))}
-        </nav>
-      </aside>
+      <Sidebar />
 
       <main className="cs-main">
         <header className="cs-header">

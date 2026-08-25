@@ -114,4 +114,45 @@
 .cs-thinking { color: #a2a7b6; font-size: 14px; }
 .cs-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1b1c26; color: #fff; padding: 12px 18px; border-radius: 12px; z-index: 30; font-size: 14px; }
 
+/* sidebar footer */
+.cs-nav { flex: 0 0 auto; }
+.cs-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.cs-side-user { font-size: 12px; color: #7f8bb0; padding: 6px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* generic page content area inside the shell */
+.cs-page { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
+
+/* ============ LIGHT THEME for the non-chat pages (scoped) ============ */
+.app-light { color: #2b2f3d; }
+.app-light .title { color: #1c2030; font-size: 20px; font-weight: 700; margin: 8px 0 14px; }
+.app-light .muted { color: #8b90a0; }
+.app-light .glass, .app-light .card, .app-light .list-row {
+  background: #fff; border: 1px solid #ececf3; border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(20,20,40,.05); backdrop-filter: none;
+}
+.app-light .list-row { padding: 14px 16px; margin-bottom: 12px; }
+.app-light .card { padding: 14px; }
+.app-light .thumb, .app-light .prod-img { background: #eef0f4; }
+.app-light .price { color: #1c2030; font-weight: 700; }
+.app-light .pill { background: #f2f2f7; border: 1px solid #e6e6ee; color: #4a4f60; }
+.app-light label { color: #8b90a0; }
+.app-light input, .app-light select, .app-light textarea {
+  background: #fff; border: 1px solid #e4e4ee; color: #1c2030; border-radius: 12px;
+}
+.app-light input::placeholder { color: #b3b8c6; }
+.app-light button {
+  background: #1b1c26; color: #fff; border: 1px solid #1b1c26; border-radius: 12px; padding: 9px 16px; font-weight: 500;
+}
+.app-light button.ghost { background: #fff; color: #1c2030; border: 1px solid #e0e0ea; }
+.app-light button.danger { background: #fff; color: #e5484d; border: 1px solid #f2c9cb; }
+.app-light button:hover:not(:disabled) { filter: brightness(1.06); }
+.app-light table { color: #2b2f3d; }
+.app-light th, .app-light td { border-bottom: 1px solid #ececf3; }
+.app-light th { color: #8b90a0; font-weight: 600; }
+.app-light code { color: #6a5bd8; background: #f2f0fd; padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+.app-light .badge-ok { color: #159a5b; } .app-light .badge-bad { color: #e5484d; }
+.app-light .card.glass:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(20,20,40,.12); }
+.app-light .cat { color: #a2a7b6; }
+.app-light .toast { background: #1b1c26; color: #fff; border: none; }
+
 @media (max-width: 820px) { .cs-app { grid-template-columns: 1fr; } .cs-sidebar { display: none; } }
