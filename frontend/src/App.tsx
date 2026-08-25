@@ -1,8 +1,8 @@
-import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
+import { NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth.js';
 import { Login } from './pages/Login.js';
 import { Home } from './pages/Home.js';
-import { Chat } from './pages/Chat.js';
+import { ChatShop } from './pages/ChatShop.js';
 import { Cart } from './pages/Cart.js';
 import { Orders } from './pages/Orders.js';
 import { Settings } from './pages/Settings.js';
@@ -11,9 +11,13 @@ import { Observability } from './pages/Observability.js';
 
 export function App() {
   const { user, loading, logout } = useAuth();
+  const location = useLocation();
 
   if (loading) return <div className="container">Loading…</div>;
   if (!user) return <Login />;
+
+  // The conversational shopping screen is a full-bleed app shell (its own sidebar).
+  if (location.pathname === '/chat') return <ChatShop />;
 
   const isMerchant = user.roles.includes('merchant') || user.roles.includes('admin');
 
@@ -35,7 +39,6 @@ export function App() {
       <div className="container">
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/chat" element={<Chat />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/settings" element={<Settings />} />

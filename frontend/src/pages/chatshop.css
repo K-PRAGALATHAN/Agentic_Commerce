@@ -1,0 +1,117 @@
+/* Conversational shopping — accurate replica of the reference layout (light theme).
+   Scoped with the cs- prefix. Glassy pass comes later. */
+.cs-app {
+  position: fixed; inset: 0; display: grid; grid-template-columns: 264px 1fr;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0a0f26;
+}
+
+/* ---- Sidebar ---- */
+.cs-sidebar {
+  background: linear-gradient(180deg, #0d1740 0%, #0a1030 40%, #0a0f26 100%);
+  color: #c9d2ea; padding: 18px 16px; display: flex; flex-direction: column; gap: 22px;
+}
+.cs-brand { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; }
+.cs-orb { width: 40px; height: 40px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #cbb7ff, #7c6cff 45%, #3a2f7a 90%); }
+.cs-toggle { opacity: .6; cursor: pointer; }
+.cs-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.cs-nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 12px;
+  color: #aeb8d6; font-size: 14px; cursor: pointer; border: 1px solid transparent;
+}
+.cs-nav-item:hover { background: rgba(255,255,255,.05); color: #eaf0ff; }
+.cs-nav-item.active { background: #1a2550; color: #fff; }
+.cs-nav-item svg { flex: 0 0 18px; color: #8f7bff; }
+
+/* ---- Main ---- */
+.cs-main {
+  background: linear-gradient(180deg, #fbfbfe 0%, #f1f0f8 100%);
+  margin: 10px 10px 10px 0; border-radius: 22px; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+.cs-header { display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 28px; border-bottom: 1px solid #ececf3; }
+.cs-header h1 { margin: 0; font-size: 22px; color: #1c2030; font-weight: 600; }
+.cs-cart { position: relative; color: #5b6072; cursor: pointer; }
+.cs-cart-badge { position: absolute; top: -6px; right: -8px; background: #7c6cff; color: #fff;
+  font-size: 11px; min-width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center; padding: 0 4px; }
+
+.cs-thread { flex: 1; overflow-y: auto; padding: 26px 28px; display: flex; flex-direction: column; gap: 18px; }
+.cs-user { align-self: flex-end; max-width: 62%; background: #e9e6fb; color: #2a2740;
+  padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 15px; line-height: 1.4; }
+.cs-assistant { display: flex; gap: 10px; align-items: flex-start; max-width: 78%; color: #2b2f3d; font-size: 15px; line-height: 1.5; }
+.cs-check { flex: 0 0 18px; margin-top: 2px; color: #7c6cff; }
+
+/* ---- Product carousel ---- */
+.cs-carousel { position: relative; }
+.cs-cards { display: flex; gap: 16px; overflow-x: auto; padding: 6px 2px 10px; scroll-behavior: smooth; scrollbar-width: none; }
+.cs-cards::-webkit-scrollbar { display: none; }
+.cs-arrow { position: absolute; top: 40%; width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(255,255,255,.9); border: 1px solid #e6e6ee; color: #333; display: grid; place-items: center;
+  cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.12); z-index: 2; }
+.cs-arrow.left { left: -6px; } .cs-arrow.right { right: -6px; }
+
+.cs-card { flex: 0 0 232px; background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 8px 24px rgba(20,20,40,.06); cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.cs-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(20,20,40,.12); }
+.cs-media { position: relative; height: 220px; background: #efeff2; }
+.cs-media img { width: 100%; height: 100%; object-fit: cover; }
+.cs-media-actions { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; gap: 8px; }
+.cs-buynow { background: #1b1c26; color: #fff; border: none; border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.cs-addcart { background: rgba(255,255,255,.95); color: #1b1c26; border: none; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cs-info { padding: 14px 16px 16px; }
+.cs-name { font-size: 15px; font-weight: 600; color: #1c2030; }
+.cs-sub { font-size: 13px; color: #8b90a0; margin-top: 2px; }
+.cs-price { font-size: 15px; font-weight: 700; color: #1c2030; margin-top: 8px; }
+.cs-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.cs-brand-sm { font-size: 12px; color: #a2a7b6; }
+.cs-rating { font-size: 13px; color: #5b6072; display: inline-flex; align-items: center; gap: 3px; }
+.cs-star { color: #f5b301; }
+
+/* ---- Inline checkout card ---- */
+.cs-checkout { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  background: #fff; border: 1px solid #ececf3; border-radius: 16px; padding: 14px 16px; max-width: 620px; box-shadow: 0 8px 24px rgba(20,20,40,.05); }
+.cs-checkout-left { display: flex; align-items: center; gap: 12px; }
+.cs-checkout-thumb { width: 40px; height: 40px; border-radius: 8px; background: #efeff2; object-fit: cover; }
+.cs-checkout-btn { background: #e9e6fb; color: #2a2740; border: none; border-radius: 12px;
+  padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 14px; }
+.cs-checkout-btn .amt { color: #5b6072; font-weight: 500; }
+
+/* ---- Composer ---- */
+.cs-composer { padding: 16px 28px 22px; }
+.cs-composer input { width: 100%; border: 1px solid #e4e4ee; background: #fff; border-radius: 14px;
+  padding: 15px 20px; font-size: 15px; color: #1c2030; outline: none; box-shadow: 0 6px 20px rgba(20,20,40,.05); }
+.cs-composer input::placeholder { color: #a2a7b6; }
+
+/* ---- Product detail drawer ---- */
+.cs-scrim { position: fixed; inset: 0; background: rgba(10,15,38,.28); backdrop-filter: blur(2px); z-index: 20; }
+.cs-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92vw; background: #fff;
+  z-index: 21; box-shadow: -20px 0 60px rgba(0,0,0,.25); overflow-y: auto; padding: 18px 22px 28px; animation: cs-slide .22s ease; }
+@keyframes cs-slide { from { transform: translateX(30px); opacity: .6; } to { transform: none; opacity: 1; } }
+.cs-drawer-head { display: flex; align-items: center; justify-content: space-between; color: #1c2030; }
+.cs-drawer-head .mid { font-size: 15px; font-weight: 600; }
+.cs-icon-btn { background: none; border: none; cursor: pointer; color: #5b6072; padding: 4px; }
+.cs-hero { width: 100%; height: 300px; object-fit: cover; border-radius: 14px; background: #efeff2; margin: 14px 0; }
+.cs-thumbs { display: flex; gap: 10px; margin-bottom: 16px; }
+.cs-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #efeff2; border: 1px solid #ececf3; cursor: pointer; }
+.cs-d-brand { font-size: 12px; color: #a2a7b6; text-transform: uppercase; letter-spacing: .5px; }
+.cs-d-name { font-size: 20px; font-weight: 700; color: #1c2030; margin: 2px 0; }
+.cs-d-price { font-size: 18px; font-weight: 700; color: #1c2030; margin-bottom: 14px; }
+.cs-d-label { font-size: 13px; color: #8b90a0; margin: 12px 0 8px; }
+.cs-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+.cs-size { min-width: 44px; padding: 9px 0; text-align: center; border: 1px solid #e0e0ea; border-radius: 8px; font-size: 13px; color: #2b2f3d; cursor: pointer; background: #fff; }
+.cs-size.active { background: #1b1c26; color: #fff; border-color: #1b1c26; }
+.cs-colors { display: flex; gap: 10px; }
+.cs-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #d8d8e2; cursor: pointer; }
+.cs-desc { font-size: 14px; color: #5b6072; line-height: 1.55; margin: 14px 0 20px; }
+.cs-qtyrow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.cs-qty { display: flex; align-items: center; gap: 14px; border: 1px solid #e0e0ea; border-radius: 10px; padding: 8px 14px; }
+.cs-qty button { background: none; border: none; font-size: 18px; cursor: pointer; color: #2b2f3d; }
+.cs-d-addcart { flex: 1; background: #f2f2f7; color: #1c2030; border: 1px solid #e0e0ea; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cs-d-buynow { width: 100%; background: #e9e6fb; color: #2a2740; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; }
+
+.cs-thinking { color: #a2a7b6; font-size: 14px; }
+.cs-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1b1c26; color: #fff; padding: 12px 18px; border-radius: 12px; z-index: 30; font-size: 14px; }
+
+@media (max-width: 820px) { .cs-app { grid-template-columns: 1fr; } .cs-sidebar { display: none; } }

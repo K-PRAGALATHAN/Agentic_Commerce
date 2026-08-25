@@ -18,6 +18,7 @@ from .tools import Tools
 
 CONFIRM_WORDS = {"yes", "y", "confirm", "ok", "okay", "sure", "proceed", "go ahead", "do it", "buy it"}
 SHOP_VERBS = ("buy", "purchase", "order", "get me", "find", "show", "want", "need", "add")
+BROWSE_WORDS = ("list", "show me", "browse", "options", "suggest", "what do you have", "looking for", "recommend")
 STOP = {
     "buy", "purchase", "order", "get", "me", "a", "an", "the", "please", "want", "need",
     "find", "show", "under", "below", "less", "than", "for", "with", "to", "i", "some",
@@ -49,6 +50,9 @@ def _parse_rule_based(message: str) -> dict:
         if kw:
             items.append(kw)
     keyword = items[0] if items else ""
+    # Browse = "list/show me shirts" → present options, don't auto-buy.
+    if any(w in text for w in BROWSE_WORDS) and keyword:
+        return {"intent": "browse", "keyword": keyword, "items": items, "max_paise": max_paise}
     # Shop intent needs an explicit signal — a shopping verb or a price ceiling.
     is_shop = any(v in text for v in SHOP_VERBS) or (max_paise is not None)
     return {"intent": "shop" if is_shop else "general", "keyword": keyword, "items": items, "max_paise": max_paise}
@@ -59,9 +63,9 @@ async def _parse(message: str, run_id: str, tools: Tools) -> dict:
         return _parse_rule_based(message)
     prompt = [
         {"role": "system", "content": (
-            "Extract shopping intent as JSON only. Fields: intent ('shop'|'general'|'confirm'), "
-            "items (array of product phrases the user wants to buy; [] if none), "
-            "max_rupees (number or null). No prose."
+            "Extract shopping intent as JSON only. Fields: intent "
+            "('shop' to buy | 'browse' to just list/show options | 'general' | 'confirm'), "
+            "items (array of product phrases; [] if none), max_rupees (number or null). No prose."
         )},
         {"role": "user", "content": message},
     ]
@@ -168,6 +172,16 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
         out = await _general(message, ctx, run_id, tools)
         memory.remember(user_id, "assistant", out["reply"])
         return out
+
+    # 2b) Browse — cherry-pick the top products and present as cards (no auto-buy).
+    if intent == "browse":
+        kw = parsed.get("keyword", "")
+        products = await tools.search_products(kw, parsed.get("max_paise"))
+        await tools.log_run(run_id, "search", {"keyword": kw, "mode": "browse"}, {"matches": len(products)})
+        if not products:
+            return _reply(user_id, f'I couldn\'t find any "{kw}". Want to try another term?', "no_results")
+        top = _rank(products, pref_rank)[:6]
+        return _reply(user_id, f'Here are the top {len(top)} {kw} I found — tap any to see details, or "Add to cart".', "browse", {"options": top})
 
     # 3) Shopping flow — each step logged as an agent run (multi-agent trace).
     keyword = parsed.get("keyword", "")

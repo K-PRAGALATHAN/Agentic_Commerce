@@ -33,7 +33,8 @@ export async function getCatalog(f: CatalogFilter = {}): Promise<Product[]> {
   const params: unknown[] = [];
   if (f.q) {
     params.push(`%${f.q}%`);
-    where.push(`name ILIKE $${params.length}`);
+    const p = `$${params.length}`;
+    where.push(`(name ILIKE ${p} OR category ILIKE ${p})`); // match product name OR category
   }
   if (f.category) {
     params.push(f.category);
