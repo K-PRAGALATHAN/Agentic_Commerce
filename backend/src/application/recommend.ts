@@ -1,4 +1,5 @@
 import { query } from '../adapters/db/pool.js';
+import { relatedProducts } from './kg.js';
 import type { Product } from '../domain/types.js';
 
 // Upsell + cross-sell. Cross-sell uses order co-occurrence ("bought together"),
@@ -24,24 +25,11 @@ export async function getUpsell(productId: string): Promise<Product | null> {
   return rows.length ? mapRow(rows[0]) : null;
 }
 
-// Cross-sell: items most frequently bought in the SAME order as this product.
-// Falls back to same-category items when there's no purchase history yet.
+// Cross-sell: read the materialized knowledge graph (BOUGHT_WITH). Falls back to
+// same-category items when the graph has no edges for this product yet.
 export async function getCrossSell(productId: string, limit = 3): Promise<Product[]> {
-  const co = await query(
-    `SELECT (item->>'productId') AS pid, COUNT(*) AS n
-       FROM orders o, jsonb_array_elements(o.items) item
-      WHERE o.id IN (
-              SELECT o2.id FROM orders o2, jsonb_array_elements(o2.items) it2
-               WHERE it2->>'productId' = $1)
-        AND (item->>'productId') <> $1
-      GROUP BY pid ORDER BY n DESC LIMIT $2`,
-    [productId, limit],
-  );
-  if (co.rows.length) {
-    const ids = co.rows.map((r: any) => r.pid);
-    const { rows } = await query(`SELECT * FROM products WHERE id = ANY($1)`, [ids]);
-    return rows.map(mapRow);
-  }
+  const kg = await relatedProducts(productId, limit);
+  if (kg.length) return kg.map(mapRow);
   const { rows } = await query(
     `SELECT p.* FROM products p JOIN products base ON base.id = $1
       WHERE p.category = base.category AND p.id <> base.id

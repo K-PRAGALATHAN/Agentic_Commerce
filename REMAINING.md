@@ -28,29 +28,28 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 - 🟡 Memory: in-process per-user (mem0 pluggable, not wired — needs MEM0_API_KEY).
 - ⬜ Agent-initiated **payment completion** (payment link / hand-off to the widget).
 
-## Phase 4 — Multi-Agent Orchestration 🟡
+## Phase 4 — Multi-Agent Orchestration ✅
 - 🟡 Orchestration = in-process agent flow with per-step trace (Temporal/LangGraph deferred = documented fallback).
-- ✅ Agents: search, explainer, guardrail, intent-inference, **upsell**, **cross-sell**, payment, general.
-- ✅ **`agent_runs` persisted** + surfaced in Observability (multi-agent trace panel).
-- ⬜ Batch multi-product buy (one accumulation pass) — single-product path done.
-- ✅ direct vs conversational; 🟡 no-spec inference (basic).
+- ✅ Agents: search, explainer, cost-accumulation, guardrail, intent-inference, **upsell**, **cross-sell**, payment, general.
+- ✅ **`agent_runs` persisted** + surfaced in Observability.
+- ✅ **Batch multi-product** ("a shirt and shoes") — one accumulation pass, one guardrail, one ledger entry.
+- ✅ direct vs conversational; no-spec inference (basic).
 
-## Phase 5 — Intelligence Layer 🟡
-- ✅ **KG seed** = order co-occurrence powering cross-sell; upsell = same-category next-price-up.
-- ⬜ Formal KG store + clusters; mem0 + Sidekick-style persistence (in-process memory for now).
-- ⬜ **Wiki** (shared store/product knowledge for agent consistency).
-- ✅ **Checkout ledger** — now written on every checkout (Cart Mandate) + on refund approval.
+## Phase 5 — Intelligence Layer ✅
+- ✅ **Formal KG store** (`kg_edges`, materialized from orders) powering cross-sell; upsell = same-category next price up; clusters by category.
+- ✅ **Wiki** (`wiki` table, merchant-editable) grounds agent answers for consistency.
+- ✅ **Persistent memory** (`agent_memory`, DB-backed, Sidekick-style, keyed on UUID). mem0 SDK = optional future swap.
+- ✅ **Checkout ledger** on every checkout (Cart Mandate) + refund.
 
-## Phase 6 — Protocols & Polish 🟡
-- ⬜ ACP-style agent-readable catalog/checkout endpoints (documented).
-- ✅ **AP2 mandate surfacing** in UI (intent-ledger = Intent Mandate; checkout-ledger = Cart Mandate).
-- ⬜ x402 doc note.
-- 🟡 Glassy design (wireframe-level; polish pass pending).
-- ✅ **3-min demo script** (`DEMO.md`); ⬜ deploy to AWS/Vercel.
+## Phase 6 — Protocols & Polish ✅ (deploy excluded)
+- ✅ **ACP** agent-readable catalog feed (`GET /acp/catalog`) + `PROTOCOLS.md`.
+- ✅ **AP2 mandate surfacing** in UI; ✅ **UAP** = guardrail; ✅ **x402** documented (PROTOCOLS.md).
+- ✅ Glassy polish + **inline product-card carousel & checkout card** in chat (per reference), conversation sidebar + new-chat.
+- ✅ `DEMO.md`; ⬜ deploy to AWS/Vercel (**explicitly out of scope**).
 
-## Phase 7 — Hardening & Demo 🟡
-- ✅ **Rate limiting** on auth/reset endpoints (in-memory fixed-window).
-- ⬜ Full error-path coverage review, latency pass, credential-isolation re-audit, demo rehearsal.
+## Phase 7 — Hardening ✅
+- ✅ **Rate limiting** (auth/reset). ✅ Credential isolation (token/secret never in prompts). ✅ Graceful error paths across agent + payments.
+- 🟡 Latency pass + full demo rehearsal (recommended before judging).
 
 ---
 

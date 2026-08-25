@@ -5,19 +5,38 @@ import { getUserPrefs } from '../../../application/guardrail.js';
 import { listOrders } from '../../../application/orders.js';
 import { logAgentRun } from '../../../application/agentRuns.js';
 import { getUpsell, getCrossSell } from '../../../application/recommend.js';
+import { appendMemory, recentMemory } from '../../../application/agentMemory.js';
+import { listWiki } from '../../../application/wiki.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
 
 // Endpoints the agent-service calls (authenticated as the user, per-route).
 export const agentRouter = Router();
 
-// One convenience call: everything the agent needs for context in a single round-trip.
+// One convenience call: everything the agent needs for context in a single round-trip
+// — preferences, recent orders, persistent memory (Sidekick-style), and the wiki.
 agentRouter.get(
   '/agent/context',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const [preferences, orders] = await Promise.all([getUserPrefs(req.user!.sub), listOrders(req.user!.sub)]);
-    res.json({ preferences, recentOrders: orders.slice(0, 5) });
+    const [preferences, orders, memory, wiki] = await Promise.all([
+      getUserPrefs(req.user!.sub),
+      listOrders(req.user!.sub),
+      recentMemory(req.user!.sub, 12),
+      listWiki(),
+    ]);
+    res.json({ preferences, recentOrders: orders.slice(0, 5), memory, wiki });
+  }),
+);
+
+// Persistent agent memory (append after each turn).
+agentRouter.post(
+  '/agent/memory',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { role, content } = z.object({ role: z.string(), content: z.string() }).parse(req.body);
+    await appendMemory(req.user!.sub, role, content);
+    res.json({ ok: true });
   }),
 );
 

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createProduct, updateProduct, deleteProduct, listOwnProducts } from '../../../application/catalog.js';
 import { listRefundRequests, approveRefund, rejectRefund } from '../../../application/refunds.js';
 import { summarizeModelCost } from '../../../application/modelCost.js';
+import { upsertWiki } from '../../../application/wiki.js';
+import { materializeKG } from '../../../application/kg.js';
 import { writeAudit } from '../../../application/audit.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
@@ -91,5 +93,25 @@ merchantRouter.get(
   ...merchantOnly,
   asyncHandler(async (_req, res) => {
     res.json(await summarizeModelCost());
+  }),
+);
+
+// Rebuild the knowledge graph from order history (BOUGHT_WITH edges).
+merchantRouter.post(
+  '/admin/materialize-kg',
+  ...merchantOnly,
+  asyncHandler(async (_req, res) => {
+    res.json(await materializeKG());
+  }),
+);
+
+// Edit the shared wiki (agent-consistency knowledge).
+merchantRouter.put(
+  '/merchant/wiki/:key',
+  ...merchantOnly,
+  asyncHandler(async (req, res) => {
+    const { title, content } = z.object({ title: z.string().min(1), content: z.string().min(1) }).parse(req.body);
+    await upsertWiki(req.params.key, title, content);
+    res.json({ ok: true });
   }),
 );

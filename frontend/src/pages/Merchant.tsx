@@ -4,12 +4,14 @@ import { api, rupees } from '../lib/api.js';
 interface Product { id: string; name: string; pricePaise: number; stock: number; category: string; }
 interface Refund { id: string; order_id: string; amount_paise: number; reason: string; requester_email: string; }
 interface Cost { totalCalls: number; totalCost: number; byModel: any[]; }
+interface WikiEntry { key: string; title: string; content: string; }
 const empty = { name: '', priceRupees: 0, stock: 0, category: '' };
 
 export function Merchant() {
   const [products, setProducts] = useState<Product[]>([]);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [cost, setCost] = useState<Cost | null>(null);
+  const [wiki, setWiki] = useState<WikiEntry[]>([]);
   const [form, setForm] = useState<any>(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
@@ -21,6 +23,7 @@ export function Merchant() {
       const r = await api.get<{ requests: Refund[] }>('/merchant/refunds');
       setRefunds(r.requests);
       setCost(await api.get<Cost>('/merchant/model-cost'));
+      setWiki((await api.get<{ wiki: WikiEntry[] }>('/wiki')).wiki);
     } catch { /* non-fatal */ }
   }
   useEffect(() => { load(); }, []);
@@ -28,6 +31,14 @@ export function Merchant() {
   async function decideRefund(id: string, action: 'approve' | 'reject') {
     try { await api.post(`/merchant/refunds/${id}/${action}`); setMsg(`Refund ${action}d`); await load(); }
     catch (e: any) { setMsg(e.message); }
+  }
+  async function rebuildKG() {
+    const r = await api.post<{ edges: number }>('/admin/materialize-kg');
+    setMsg(`Knowledge graph rebuilt — ${r.edges} edges`);
+  }
+  async function saveWiki(w: WikiEntry) {
+    await api.put(`/merchant/wiki/${w.key}`, { title: w.title, content: w.content });
+    setMsg(`Wiki "${w.key}" saved`);
   }
 
   async function save(e: React.FormEvent) {
@@ -56,7 +67,10 @@ export function Merchant() {
     <>
       <div className="row between">
         <div className="title">Merchant · Catalog</div>
-        <button className="ghost" onClick={seed}>⤓ Seed from internet (Door 1)</button>
+        <div className="row">
+          <button className="ghost" onClick={seed}>⤓ Seed from internet</button>
+          <button className="ghost" onClick={rebuildKG}>⟳ Rebuild knowledge graph</button>
+        </div>
       </div>
 
       <div className="list-row glass">
@@ -120,6 +134,20 @@ export function Merchant() {
           </div>
         ))}
       </div>
+
+      <div className="title" style={{ fontSize: 16 }}>Wiki — shared knowledge (agent consistency)</div>
+      {wiki.map((w, idx) => (
+        <div key={w.key} className="list-row glass">
+          <label>{w.title} <code>({w.key})</code></label>
+          <textarea
+            value={w.content}
+            onChange={(e) => setWiki((ws) => ws.map((x, i) => (i === idx ? { ...x, content: e.target.value } : x)))}
+            rows={2}
+            style={{ width: '100%', font: 'inherit', color: 'var(--text)', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--glass-brd)', borderRadius: 12, padding: 10, margin: '6px 0' }}
+          />
+          <button className="ghost" onClick={() => saveWiki(w)}>Save</button>
+        </div>
+      ))}
 
       {msg && <div className="toast glass">{msg}</div>}
     </>

@@ -61,6 +61,12 @@ class Tools:
         except Exception:
             pass  # trace logging must never break the conversation
 
+    async def remember(self, role: str, content: str) -> None:
+        try:
+            await self._post("/agent/memory", {"role": role, "content": content})
+        except Exception:
+            pass  # persistent memory is best-effort
+
     # --- action tools (backend enforces guardrails) ---
     async def add_to_cart(self, product_id: str, qty: int = 1) -> dict:
         return await self._post("/cart/items", {"productId": product_id, "qty": qty})

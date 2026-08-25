@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, rupees } from '../lib/api.js';
-import { loadRazorpay } from '../lib/razorpay.js';
+import { runCheckout, type Guard } from '../lib/checkout.js';
 
 interface CartItem { productId: string; name: string; qty: number; pricePaise: number; }
 interface CartData { items: CartItem[]; totalPaise: number; }
-interface Guard { totalPaise: number; effectiveLimitPaise: number; reason: string; }
 
 export function Cart() {
   const [cart, setCart] = useState<CartData | null>(null);
@@ -26,42 +25,11 @@ export function Cart() {
     setCart(cart);
   }
 
-  // Full flow: create order → open Razorpay test widget → verify server-side → show result.
   async function checkout(confirmOverLimit = false) {
     setBusy(true); say(''); setGated(null);
     try {
-      const res = await api.post<any>('/orders/checkout', confirmOverLimit ? { confirmOverLimit: true } : {});
-      if (res.gated) { setGated(res.guard); say(`Over your limit — ${res.guard.reason}.`, 'bad'); return; }
-      if (!res.razorpayKeyId) { say('Razorpay test keys not configured on the server.', 'bad'); return; }
-
-      const Razorpay = await loadRazorpay();
-      const rzp = new Razorpay({
-        key: res.razorpayKeyId,
-        order_id: res.razorpayOrderId,
-        amount: res.order.totalPaise,
-        currency: 'INR',
-        name: 'Agentic Commerce',
-        description: `Order ${String(res.order.id).slice(0, 8)}`,
-        handler: async (r: any) => {
-          // Success path → verify signature SERVER-SIDE before trusting it.
-          try {
-            const v = await api.post<any>(`/orders/${res.order.id}/confirm`, {
-              razorpay_order_id: r.razorpay_order_id,
-              razorpay_payment_id: r.razorpay_payment_id,
-              razorpay_signature: r.razorpay_signature,
-            });
-            if (v.verified) { say('✅ Payment verified and captured.', 'ok'); await load(); }
-            else say('Payment could not be verified — not charged.', 'bad');
-          } catch (e: any) { say(e.message, 'bad'); }
-        },
-        modal: { ondismiss: () => say('Payment cancelled — your cart is safe.', '') },
-        theme: { color: '#7aa2ff' },
-      });
-      // Graceful failure path (e.g. Razorpay failure test card).
-      rzp.on('payment.failed', (resp: any) => {
-        say(`❌ Payment failed (${resp.error?.description ?? 'declined'}). Your cart is intact — try again or use another method.`, 'bad');
-      });
-      rzp.open();
+      const r = await runCheckout(confirmOverLimit, say, load);
+      if (r.gated) setGated(r.gated);
     } catch (e: any) {
       say(e.message, 'bad');
     } finally { setBusy(false); }

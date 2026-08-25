@@ -40,14 +40,18 @@ def _parse_rule_based(message: str) -> dict:
         m = re.search(r"₹\s*(\d+)", text)
     if m:
         max_paise = int(m.group(1)) * 100
-    # keyword = message minus command/stop words and prices
-    cleaned = re.sub(r"₹?\s*\d+", " ", text)
-    tokens = [t for t in re.findall(r"[a-z]+", cleaned) if t not in STOP]
-    keyword = " ".join(tokens).strip()
+    # Strip prices, then split on separators for MULTIPLE products ("shirt and shoes").
+    stripped = re.sub(r"₹?\s*\d+", " ", text)
+    items = []
+    for frag in re.split(r"\s+and\s+|,|&", stripped):
+        toks = [t for t in re.findall(r"[a-z]+", frag) if t not in STOP]
+        kw = " ".join(toks).strip()
+        if kw:
+            items.append(kw)
+    keyword = items[0] if items else ""
     # Shop intent needs an explicit signal — a shopping verb or a price ceiling.
-    # A bare sentence with no verb/price is treated as general chat (→ friendly divert).
     is_shop = any(v in text for v in SHOP_VERBS) or (max_paise is not None)
-    return {"intent": "shop" if is_shop else "general", "keyword": keyword, "max_paise": max_paise}
+    return {"intent": "shop" if is_shop else "general", "keyword": keyword, "items": items, "max_paise": max_paise}
 
 
 async def _parse(message: str, run_id: str, tools: Tools) -> dict:
@@ -56,7 +60,8 @@ async def _parse(message: str, run_id: str, tools: Tools) -> dict:
     prompt = [
         {"role": "system", "content": (
             "Extract shopping intent as JSON only. Fields: intent ('shop'|'general'|'confirm'), "
-            "keyword (product words, string), max_rupees (number or null). No prose."
+            "items (array of product phrases the user wants to buy; [] if none), "
+            "max_rupees (number or null). No prose."
         )},
         {"role": "user", "content": message},
     ]
@@ -64,9 +69,11 @@ async def _parse(message: str, run_id: str, tools: Tools) -> dict:
         res = await model.chat(prompt, temperature=0)
         await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
         data = model.extract_json(res["text"]) or {}
+        items = [str(x).strip() for x in (data.get("items") or []) if str(x).strip()]
         return {
             "intent": data.get("intent", "shop"),
-            "keyword": (data.get("keyword") or "").strip(),
+            "keyword": items[0] if items else "",
+            "items": items,
             "max_paise": int(data["max_rupees"] * 100) if data.get("max_rupees") else None,
         }
     except Exception:
@@ -99,17 +106,29 @@ async def _explain(pick: dict, n: int, pref: str, run_id: str, tools: Tools) -> 
 
 async def _general(message: str, ctx: dict, run_id: str, tools: Tools) -> dict:
     orders = ctx.get("recentOrders", [])
+    wiki = ctx.get("wiki", [])
+    mem = ctx.get("memory", [])
     if model.is_available():
         try:
+            # Wiki grounds answers so every agent tells the SAME story (consistency).
+            facts = "\n".join(f"- {w['title']}: {w['content']}" for w in wiki)
+            history = [{"role": m["role"], "content": m["content"]} for m in mem[-6:]]
             res = await model.chat([
-                {"role": "system", "content": "You are a concise shopping assistant for this store. If the message is off-topic, gently and wittily steer back to shopping. Keep it brief and brand-safe."},
+                {"role": "system", "content": (
+                    "You are a concise shopping assistant for this store. Answer store questions using ONLY these facts; "
+                    "if off-topic, gently and wittily steer back to shopping. Brief and brand-safe.\n\nStore facts:\n" + facts
+                )},
+                *history,
                 {"role": "user", "content": message},
             ])
             await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
             return {"reply": res["text"].strip(), "kind": "general", "data": {}}
         except Exception:
             pass
-    # keyless fallback: light, tasteful divert + a nudge from history
+    # keyless fallback: answer policy questions from the wiki, else a tasteful divert.
+    for w in wiki:
+        if w["key"] in message.lower() or any(word in message.lower() for word in w["title"].lower().split()):
+            return {"reply": f"{w['title']}: {w['content']}", "kind": "general", "data": {}}
     hint = "Try: \"buy me a blue shirt under ₹600\"."
     if orders:
         hint = f"Last time you spent {rupees(int(orders[0]['totalPaise']))} — want something similar? " + hint
@@ -117,6 +136,14 @@ async def _general(message: str, ctx: dict, run_id: str, tools: Tools) -> dict:
 
 
 async def handle(user_id: str, message: str, tools: Tools) -> dict:
+    # Persist the turn to the backend (Sidekick-style memory) around the core logic.
+    await tools.remember("user", message)
+    out = await _handle(user_id, message, tools)
+    await tools.remember("assistant", out.get("reply", ""))
+    return out
+
+
+async def _handle(user_id: str, message: str, tools: Tools) -> dict:
     run_id = str(uuid.uuid4())
     memory.remember(user_id, "user", message)
     ctx = await tools.get_context()
@@ -144,8 +171,13 @@ async def handle(user_id: str, message: str, tools: Tools) -> dict:
 
     # 3) Shopping flow — each step logged as an agent run (multi-agent trace).
     keyword = parsed.get("keyword", "")
+    items = parsed.get("items") or ([keyword] if keyword else [])
     max_paise = parsed.get("max_paise")
-    await tools.log_run(run_id, "orchestrator", {"message": message}, {"intent": intent, "keyword": keyword, "max_paise": max_paise})
+    await tools.log_run(run_id, "orchestrator", {"message": message}, {"intent": intent, "items": items, "max_paise": max_paise})
+
+    # 3a) BATCH multi-product: one accumulation pass, one guardrail, one ledger entry.
+    if len(items) > 1:
+        return await _batch(user_id, items, max_paise, pref_rank, buying_mode, run_id, tools)
 
     products = await tools.search_products(keyword, max_paise)
     await tools.log_run(run_id, "search", {"keyword": keyword, "max_paise": max_paise}, {"matches": len(products)})
@@ -173,16 +205,51 @@ async def handle(user_id: str, message: str, tools: Tools) -> dict:
     cart = await tools.get_cart()
     total = int(cart.get("totalPaise", pick["pricePaise"]))
 
+    # Product options for the chat to render as cards (carousel).
+    options = ranked[:4]
+
     # Conversational mode: recommend + ask before spending.
     if buying_mode == "conversational":
         memory.set_scratch(user_id, "pending", {"over_limit": False})
         reply = f'{why}{suggest} Added to your cart — your total is {rupees(total)}. Shall I check out? (reply "confirm")'
-        return _reply(user_id, reply, "recommend", {"pick": pick, "upsell": upsell, "crossSell": cross, "cartTotalPaise": total})
+        return _reply(user_id, reply, "recommend", {"pick": pick, "options": options, "upsell": upsell, "crossSell": cross, "cartTotalPaise": total})
 
     # Direct mode: proceed to checkout (guardrail decides).
     result = await tools.checkout(confirm_over_limit=False)
     await tools.log_run(run_id, "payment", {"total_paise": total}, {"gated": bool(result.get("gated")), "order": (result.get("order") or {}).get("id")})
     return _checkout_reply(user_id, result, prefix=why + suggest + " ")
+
+
+async def _batch(user_id, items, max_paise, pref_rank, buying_mode, run_id, tools) -> dict:
+    """Buy several products in one pass: search+pick+add each, then ONE checkout.
+    Avoids per-product round-trips to the money layer (single guardrail + ledger)."""
+    picks, missing = [], []
+    for kw in items:
+        products = await tools.search_products(kw, max_paise)
+        await tools.log_run(run_id, "search", {"keyword": kw, "max_paise": max_paise}, {"matches": len(products)})
+        if not products:
+            missing.append(kw)
+            continue
+        pick = _rank(products, pref_rank)[0]
+        await tools.add_to_cart(pick["id"], 1)
+        picks.append(pick)
+    await tools.log_run(run_id, "cost_accumulation", {"requested": len(items)}, {"found": len(picks), "missing": missing})
+
+    if not picks:
+        return _reply(user_id, f'None of those matched ({", ".join(items)}). Want to try different terms?', "no_results")
+
+    cart = await tools.get_cart()
+    total = int(cart.get("totalPaise", 0))
+    names = ", ".join(p["name"] for p in picks)
+    note = f' (couldn\'t find: {", ".join(missing)})' if missing else ""
+
+    if buying_mode == "conversational":
+        memory.set_scratch(user_id, "pending", {"over_limit": False})
+        return _reply(user_id, f'Added {len(picks)} item(s): {names}{note}. Total {rupees(total)}. Shall I check out? (reply "confirm")', "recommend", {"picks": picks, "options": picks, "cartTotalPaise": total})
+
+    result = await tools.checkout(confirm_over_limit=False)
+    await tools.log_run(run_id, "payment", {"total_paise": total}, {"gated": bool(result.get("gated"))})
+    return _checkout_reply(user_id, result, prefix=f"Picked {names}{note}. ")
 
 
 def _reply(user_id: str, text: str, kind: str, data: dict | None = None) -> dict:
