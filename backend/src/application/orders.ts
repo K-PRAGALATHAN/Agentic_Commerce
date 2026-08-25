@@ -2,7 +2,7 @@ import { query, withTransaction } from '../adapters/db/pool.js';
 import * as razorpay from '../adapters/razorpay/razorpay.js';
 import type { Order } from '../domain/types.js';
 import { writeAudit } from './audit.js';
-import { writeIntentLedger } from './ledger.js';
+import { writeIntentLedger, writeCheckoutLedger } from './ledger.js';
 import { getCart, clearCart } from './cart.js';
 import { checkSpendLimit, type LimitCheck } from './guardrail.js';
 import { HttpError } from './auth.js';
@@ -66,6 +66,9 @@ export async function checkout(
     );
     return ins.rows[0];
   });
+
+  // Checkout ledger (Cart Mandate): records the checkout step for this order.
+  await writeCheckoutLedger(userId, { event: 'checkout', order_id: order.id, total_paise: cart.totalPaise, razorpay_order_id: rzp.id });
 
   await writeAudit({
     actor: 'user',

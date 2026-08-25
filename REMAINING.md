@@ -28,30 +28,29 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 - 🟡 Memory: in-process per-user (mem0 pluggable, not wired — needs MEM0_API_KEY).
 - ⬜ Agent-initiated **payment completion** (payment link / hand-off to the widget).
 
-## Phase 4 — Multi-Agent Orchestration ⬜
-- ⬜ Orchestrator graph (LangGraph; Temporal or the documented fallback = checkpointer + queue).
-- ⬜ Agents: search, filter, explainer, **cost-accumulation (batch multi-product)**, guardrail, intent-inference, **upsell**, **cross-sell**, payment, general.
-- ⬜ **`agent_runs` persisted** (per-agent trace) + surfaced in observability.
-- ⬜ Batch multi-product buy (one accumulation pass, one guardrail, one ledger entry).
-- ✅ (already) direct vs conversational modes; 🟡 no-spec inference (basic in Phase 3).
+## Phase 4 — Multi-Agent Orchestration 🟡
+- 🟡 Orchestration = in-process agent flow with per-step trace (Temporal/LangGraph deferred = documented fallback).
+- ✅ Agents: search, explainer, guardrail, intent-inference, **upsell**, **cross-sell**, payment, general.
+- ✅ **`agent_runs` persisted** + surfaced in Observability (multi-agent trace panel).
+- ⬜ Batch multi-product buy (one accumulation pass) — single-product path done.
+- ✅ direct vs conversational; 🟡 no-spec inference (basic).
 
-## Phase 5 — Intelligence Layer ⬜
-- ⬜ **Knowledge graph** (BOUGHT_WITH / complements / clusters from order history).
-- ⬜ Upsell/cross-sell driven by the KG.
+## Phase 5 — Intelligence Layer 🟡
+- ✅ **KG seed** = order co-occurrence powering cross-sell; upsell = same-category next-price-up.
+- ⬜ Formal KG store + clusters; mem0 + Sidekick-style persistence (in-process memory for now).
 - ⬜ **Wiki** (shared store/product knowledge for agent consistency).
-- ⬜ Combined memory (mem0 + wiki + Sidekick-style persistence).
-- 🟡 **Checkout ledger** — written on refund approval; extend to the conversational checkout path.
+- ✅ **Checkout ledger** — now written on every checkout (Cart Mandate) + on refund approval.
 
-## Phase 6 — Protocols & Polish ⬜
+## Phase 6 — Protocols & Polish 🟡
 - ⬜ ACP-style agent-readable catalog/checkout endpoints (documented).
-- ⬜ **UAP/AP2 mandate surfacing** in UI (intent-ledger = intent mandate; checkout-ledger = cart mandate).
+- ✅ **AP2 mandate surfacing** in UI (intent-ledger = Intent Mandate; checkout-ledger = Cart Mandate).
 - ⬜ x402 doc note.
-- ⬜ Glassy design polish from wireframes.
-- ⬜ Deploy (AWS/Vercel) + **3-min demo script** hitting every rubric word.
+- 🟡 Glassy design (wireframe-level; polish pass pending).
+- ✅ **3-min demo script** (`DEMO.md`); ⬜ deploy to AWS/Vercel.
 
-## Phase 7 — Hardening & Demo ⬜
-- ⬜ Security review, credential-isolation re-check, **rate limiting** (auth/payment/agent), full error-path coverage.
-- ⬜ Latency pass, demo rehearsal + backup recording.
+## Phase 7 — Hardening & Demo 🟡
+- ✅ **Rate limiting** on auth/reset endpoints (in-memory fixed-window).
+- ⬜ Full error-path coverage review, latency pass, credential-isolation re-audit, demo rehearsal.
 
 ---
 

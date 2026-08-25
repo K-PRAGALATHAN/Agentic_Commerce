@@ -4,9 +4,12 @@ import { api, rupees } from '../lib/api.js';
 interface AuditRow { id: number; actor: string; action: string; reason: string; amount_paise: number | null; verified: boolean | null; ts: string; }
 interface LedgerRow { id: number; hash: string; prev_hash: string; ts: string; payload: any; }
 
+interface RunRow { id: number; run_id: string; agent: string; output: any; status: string; ts: string; }
+
 export function Observability() {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [runs, setRuns] = useState<RunRow[]>([]);
   const [chain, setChain] = useState<{ ok: boolean; count: number; brokenAt?: number } | null>(null);
   const [which, setWhich] = useState<'intent' | 'checkout'>('intent');
 
@@ -15,6 +18,7 @@ export function Observability() {
     setAudit(a.audit);
     const l = await api.get<{ ledger: LedgerRow[] }>(`/observability/ledger/${which}`);
     setLedger(l.ledger);
+    try { setRuns((await api.get<{ runs: RunRow[] }>('/observability/agent-runs')).runs); } catch { /* ignore */ }
   }
   useEffect(() => { load(); }, [which]);
 
@@ -50,11 +54,31 @@ export function Observability() {
 
       <div className="list-row glass">
         <div className="row between">
+          <strong>Agent runs (multi-agent trace)</strong><span className="muted">{runs.length} steps</span>
+        </div>
+        <table>
+          <thead><tr><th>run</th><th>agent</th><th>output</th><th>status</th></tr></thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.id}>
+                <td><code>{r.run_id.slice(0, 6)}</code></td>
+                <td><span className="pill">{r.agent}</span></td>
+                <td className="muted" style={{ fontSize: 12 }}>{JSON.stringify(r.output)}</td>
+                <td>{r.status === 'ok' ? <span className="badge-ok">ok</span> : <span className="badge-bad">{r.status}</span>}</td>
+              </tr>
+            ))}
+            {!runs.length && <tr><td colSpan={4} className="muted">No agent runs yet — chat with the AI to populate.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="list-row glass">
+        <div className="row between">
           <div className="row">
             <strong>Ledger:</strong>
-            <select style={{ width: 160 }} value={which} onChange={(e) => setWhich(e.target.value as any)}>
-              <option value="intent">intent_ledger</option>
-              <option value="checkout">checkout_ledger</option>
+            <select style={{ width: 260 }} value={which} onChange={(e) => setWhich(e.target.value as any)}>
+              <option value="intent">intent_ledger · Intent Mandate (AP2)</option>
+              <option value="checkout">checkout_ledger · Cart Mandate (AP2)</option>
             </select>
           </div>
           <button className="ghost" onClick={verify}>🔗 Verify chain</button>

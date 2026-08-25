@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { listAudit } from '../../../application/audit.js';
 import { listLedger, verifyChain } from '../../../application/ledger.js';
+import { listAgentRuns } from '../../../application/agentRuns.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
 
@@ -22,6 +23,14 @@ observabilityRouter.get(
   asyncHandler(async (req, res) => {
     const name = req.params.name === 'checkout' ? 'checkout_ledger' : 'intent_ledger';
     res.json({ ledger: await listLedger(name, 100) });
+  }),
+);
+
+observabilityRouter.get(
+  '/observability/agent-runs',
+  requireAuth,
+  asyncHandler(async (_req, res) => {
+    res.json({ runs: await listAgentRuns(60) });
   }),
 );
 

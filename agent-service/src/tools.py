@@ -49,6 +49,18 @@ class Tools:
     async def get_context(self) -> dict:
         return await self._get("/agent/context")  # {preferences, recentOrders}
 
+    async def upsell(self, product_id: str) -> dict | None:
+        return (await self._get(f"/catalog/{product_id}/upsell")).get("upsell")
+
+    async def cross_sell(self, product_id: str) -> list[dict]:
+        return (await self._get(f"/catalog/{product_id}/cross-sell")).get("crossSell", [])
+
+    async def log_run(self, run_id: str, agent: str, inp, out, status: str = "ok") -> None:
+        try:
+            await self._post("/agent/run", {"runId": run_id, "agent": agent, "input": inp, "output": out, "status": status})
+        except Exception:
+            pass  # trace logging must never break the conversation
+
     # --- action tools (backend enforces guardrails) ---
     async def add_to_cart(self, product_id: str, qty: int = 1) -> dict:
         return await self._post("/cart/items", {"productId": product_id, "qty": qty})

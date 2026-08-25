@@ -142,10 +142,13 @@ async def handle(user_id: str, message: str, tools: Tools) -> dict:
         memory.remember(user_id, "assistant", out["reply"])
         return out
 
-    # 3) Shopping flow.
+    # 3) Shopping flow — each step logged as an agent run (multi-agent trace).
     keyword = parsed.get("keyword", "")
     max_paise = parsed.get("max_paise")
+    await tools.log_run(run_id, "orchestrator", {"message": message}, {"intent": intent, "keyword": keyword, "max_paise": max_paise})
+
     products = await tools.search_products(keyword, max_paise)
+    await tools.log_run(run_id, "search", {"keyword": keyword, "max_paise": max_paise}, {"matches": len(products)})
     if not products:
         widen = " (try a higher budget or a different term)" if max_paise else ""
         return _reply(user_id, f'No products matched "{keyword or message}"{widen}. I never guess — want to try another search?', "no_results")
@@ -153,6 +156,18 @@ async def handle(user_id: str, message: str, tools: Tools) -> dict:
     ranked = _rank(products, pref_rank)
     pick = ranked[0]
     why = await _explain(pick, len(products), pref_rank, run_id, tools)
+    await tools.log_run(run_id, "explainer", {"candidates": len(products), "pref": pref_rank}, {"pick": pick["name"], "price_paise": pick["pricePaise"]})
+
+    # Upsell + cross-sell agents (cross-sell = order co-occurrence = KG seed).
+    upsell = await tools.upsell(pick["id"])
+    cross = await tools.cross_sell(pick["id"])
+    await tools.log_run(run_id, "upsell", {"product": pick["name"]}, {"suggested": upsell["name"] if upsell else None})
+    await tools.log_run(run_id, "cross_sell", {"product": pick["name"]}, {"count": len(cross)})
+    suggest = ""
+    if upsell:
+        suggest += f' You could step up to "{upsell["name"]}" ({rupees(upsell["pricePaise"])}).'
+    if cross:
+        suggest += f' Often bought with it: {", ".join(c["name"] for c in cross[:2])}.'
 
     await tools.add_to_cart(pick["id"], 1)
     cart = await tools.get_cart()
@@ -161,12 +176,13 @@ async def handle(user_id: str, message: str, tools: Tools) -> dict:
     # Conversational mode: recommend + ask before spending.
     if buying_mode == "conversational":
         memory.set_scratch(user_id, "pending", {"over_limit": False})
-        reply = f'{why} Added to your cart — your total is {rupees(total)}. Shall I check out? (reply "confirm")'
-        return _reply(user_id, reply, "recommend", {"pick": pick, "cartTotalPaise": total})
+        reply = f'{why}{suggest} Added to your cart — your total is {rupees(total)}. Shall I check out? (reply "confirm")'
+        return _reply(user_id, reply, "recommend", {"pick": pick, "upsell": upsell, "crossSell": cross, "cartTotalPaise": total})
 
     # Direct mode: proceed to checkout (guardrail decides).
     result = await tools.checkout(confirm_over_limit=False)
-    return _checkout_reply(user_id, result, prefix=why + " ")
+    await tools.log_run(run_id, "payment", {"total_paise": total}, {"gated": bool(result.get("gated")), "order": (result.get("order") or {}).get("id")})
+    return _checkout_reply(user_id, result, prefix=why + suggest + " ")
 
 
 def _reply(user_id: str, text: str, kind: str, data: dict | None = None) -> dict:

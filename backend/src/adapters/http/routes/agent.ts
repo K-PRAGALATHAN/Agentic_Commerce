@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { trackModelCost } from '../../../application/modelCost.js';
 import { getUserPrefs } from '../../../application/guardrail.js';
 import { listOrders } from '../../../application/orders.js';
+import { logAgentRun } from '../../../application/agentRuns.js';
+import { getUpsell, getCrossSell } from '../../../application/recommend.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
 
@@ -35,5 +37,33 @@ agentRouter.post(
       .parse(req.body);
     await trackModelCost({ runId: c.runId, model: c.model, tokensIn: c.tokensIn, tokensOut: c.tokensOut, cost: c.cost });
     res.json({ ok: true });
+  }),
+);
+
+// Per-agent trace (the multi-agent coordination record).
+agentRouter.post(
+  '/agent/run',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const r = z
+      .object({ runId: z.string(), agent: z.string(), input: z.unknown().optional(), output: z.unknown().optional(), status: z.string().default('ok') })
+      .parse(req.body);
+    await logAgentRun(r.runId, r.agent, r.input, r.output, r.status);
+    res.json({ ok: true });
+  }),
+);
+
+// Upsell / cross-sell (cross-sell = order co-occurrence = KG seed).
+agentRouter.get(
+  '/catalog/:id/upsell',
+  asyncHandler(async (req, res) => {
+    res.json({ upsell: await getUpsell(req.params.id) });
+  }),
+);
+
+agentRouter.get(
+  '/catalog/:id/cross-sell',
+  asyncHandler(async (req, res) => {
+    res.json({ crossSell: await getCrossSell(req.params.id) });
   }),
 );

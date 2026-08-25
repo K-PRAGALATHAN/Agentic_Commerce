@@ -9,8 +9,11 @@ import { listOrders } from '../../../application/orders.js';
 import { getUserPrefs, updateUserPrefs } from '../../../application/guardrail.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 
 export const authRouter = Router();
+// Throttle credential + reset endpoints against brute force.
+const authLimit = rateLimit({ windowMs: 60_000, max: 12 });
 
 const credentials = z.object({
   email: z.string().email(),
@@ -20,6 +23,7 @@ const credentials = z.object({
 
 authRouter.post(
   '/auth/signup',
+  authLimit,
   asyncHandler(async (req, res) => {
     const { email, password, role } = credentials.parse(req.body);
     const user = await signup(email, password, role ?? 'customer');
@@ -29,6 +33,7 @@ authRouter.post(
 
 authRouter.post(
   '/auth/login',
+  authLimit,
   asyncHandler(async (req, res) => {
     const { email, password } = credentials.parse(req.body);
     const { user, tokens } = await login(email, password);
@@ -91,6 +96,7 @@ authRouter.post(
 // enumeration). In production the token is EMAILED; in dev it's returned for convenience.
 authRouter.post(
   '/auth/forgot-password',
+  authLimit,
   asyncHandler(async (req, res) => {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
     const token = await requestPasswordReset(email);
