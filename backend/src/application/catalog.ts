@@ -22,6 +22,7 @@ function mapRow(r: any): Product {
 
 export interface CatalogFilter {
   q?: string;
+  name?: string;
   category?: string;
   categories?: string[];
   maxPaise?: number;
@@ -35,7 +36,11 @@ export async function getCatalog(f: CatalogFilter = {}): Promise<Product[]> {
   if (f.q) {
     params.push(`%${f.q}%`);
     const p = `$${params.length}`;
-    where.push(`(name ILIKE ${p} OR category ILIKE ${p} OR description ILIKE ${p})`); // name OR category OR description
+    where.push(`(name ILIKE ${p} OR category ILIKE ${p})`); // name OR category (no description — avoids false positives)
+  }
+  if (f.name) {
+    params.push(`%${f.name}%`);
+    where.push(`name ILIKE $${params.length}`); // NAME only (precise keyword search — no description noise)
   }
   if (f.category) {
     params.push(f.category);

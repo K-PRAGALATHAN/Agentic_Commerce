@@ -58,10 +58,10 @@ class Tools:
         return (await self._get("/me")).get("user", {})
 
     # --- read tools ---
-    async def search_products(self, q: str = "", max_paise: int | None = None, categories: list[str] | None = None) -> list[dict]:
+    async def search_products(self, q: str = "", max_paise: int | None = None, categories: list[str] | None = None, name_only: bool = False) -> list[dict]:
         params: dict[str, str] = {"limit": "50"}
         if q:
-            params["q"] = q
+            params["name" if name_only else "q"] = q  # name_only avoids description false-positives
         if max_paise is not None:
             params["maxPaise"] = str(max_paise)
         if categories:

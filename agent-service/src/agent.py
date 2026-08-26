@@ -104,24 +104,44 @@ def _rank(products: list[dict], pref: str) -> list[dict]:
     return sorted(products, key=lambda p: (-float(p.get("rating") or 0), p["pricePaise"]))
 
 
-# General term -> real category. Best-effort fallback for keyless mode; the LLM
-# resolver (grounded in the live categories) is the primary path.
+# Sub-category terms → specific PRODUCT keywords (precise; the demo data lumps all
+# food under one "groceries" category, so "fruits" must filter by product, not category).
+KEYWORD_GROUPS = {
+    "fruit": ["apple", "banana", "kiwi", "orange", "mango", "strawberry", "grape", "mulberry", "lemon", "pineapple", "cherry", "pomegranate"],
+    "vegetable": ["potato", "onion", "cucumber", "tomato", "carrot", "chili", "pepper", "cabbage", "spinach", "broccoli", "beans"],
+    "drink": ["juice", "soda", "water", "coffee", "tea", "milk", "soft drink", "cola"],
+    "beverage": ["juice", "soda", "water", "coffee", "tea", "milk", "soft drink"],
+    "meat": ["chicken", "beef", "steak", "fish", "mutton", "pork", "lamb"],
+    "dairy": ["milk", "cheese", "butter", "yogurt", "egg"],
+    "snack": ["chips", "cookie", "chocolate", "ice cream", "biscuit", "honey"],
+}
+
+# Coarse term -> real category.
 SYNONYMS = {
-    "fruit": "groceries", "fruits": "groceries", "vegetable": "groceries", "vegetables": "groceries",
-    "veg": "groceries", "food": "groceries", "grocery": "groceries", "snack": "groceries", "snacks": "groceries",
-    "drink": "groceries", "drinks": "groceries", "beverage": "groceries", "beverages": "groceries",
-    "perfume": "fragrances", "perfumes": "fragrances", "scent": "fragrances", "cologne": "fragrances",
-    "makeup": "beauty", "cosmetic": "beauty", "cosmetics": "beauty", "skincare": "beauty",
-    "chair": "furniture", "table": "furniture", "bed": "furniture", "sofa": "furniture", "furnitures": "furniture",
-    "clothes": "tops", "clothing": "tops", "apparel": "tops", "wear": "tops",
-    "phone": "smartphones", "mobile": "smartphones", "laptop": "laptops",
+    "food": "groceries", "grocery": "groceries", "groceries": "groceries",
+    "perfume": "fragrances", "perfumes": "fragrances", "scent": "fragrances", "cologne": "fragrances", "fragrance": "fragrances",
+    "makeup": "beauty", "cosmetic": "beauty", "cosmetics": "beauty", "skincare": "beauty", "beauty": "beauty",
+    "chair": "furniture", "table": "furniture", "bed": "furniture", "sofa": "furniture", "furnitures": "furniture", "furniture": "furniture",
+    "phone": "smartphones", "mobile": "smartphones", "smartphone": "smartphones",
+    "laptop": "laptops", "shirt": "mens-shirts", "shirts": "mens-shirts", "shoe": "mens-shoes", "shoes": "mens-shoes",
+    "watch": "mens-watches", "watches": "mens-watches", "sunglass": "sunglasses", "sunglasses": "sunglasses", "tablet": "tablets",
 }
 
 
 def _synonym_resolve(term: str, cats: list[str]) -> tuple[list[str], list[str]]:
-    # Match on WHOLE WORDS, not substrings — otherwise "table" hits inside
-    # "vege(table)s" and wrongly maps vegetables -> furniture.
+    # Whole-WORD matching (so "table" doesn't hit inside "vege(table)s").
     words = set(re.findall(r"[a-z]+", term.lower()))
+    # 1) Sub-category keyword groups (precise product terms) take priority.
+    kw: list[str] = []
+    for w in words:
+        key = w[:-1] if (w.endswith("s") and w[:-1] in KEYWORD_GROUPS) else w  # fruits->fruit
+        if key in KEYWORD_GROUPS:
+            kw.extend(KEYWORD_GROUPS[key])
+    if kw:
+        # scope the keyword search to groceries so brand names (Apple Airpods) don't leak in
+        scope = ["groceries"] if "groceries" in cats else []
+        return scope, list(dict.fromkeys(kw))
+    # 2) Else coarse category synonyms.
     rc: list[str] = []
     for word, cat in SYNONYMS.items():
         if word in words and cat in cats and cat not in rc:
@@ -135,9 +155,9 @@ def _synonym_resolve(term: str, cats: list[str]) -> tuple[list[str], list[str]]:
 async def _resolve(term: str, run_id: str, tools: Tools) -> dict:
     """Map a general term ('fruits') to REAL categories/keywords from the live catalog."""
     cats = [c["category"] for c in await tools.clusters()]
-    # Fast path — deterministic synonym/category match, no LLM round-trip.
+    # Fast path — deterministic synonym/keyword match, no LLM round-trip.
     rc, kw = _synonym_resolve(term, cats)
-    if rc:
+    if rc or kw:
         await tools.log_run(run_id, "resolver", {"term": term, "mode": "synonym"}, {"categories": rc, "keywords": kw})
         return {"categories": rc, "keywords": kw}
     # Smart path — LLM maps ambiguous terms, grounded in the real categories.
@@ -178,19 +198,23 @@ async def _find_products(term: str, max_paise, run_id: str, tools: Tools, pre_ca
         if products:
             return products
     r = await _resolve(term, run_id, tools)
-    if r["categories"]:
-        products = await tools.search_products("", max_paise, categories=r["categories"])
-        await tools.log_run(run_id, "search", {"categories": r["categories"], "layer": "category"}, {"matches": len(products)})
-    if not products and r["keywords"]:
+    # Keyword layer FIRST (precise): name-only, restricted to the resolved category
+    # so a fruit keyword like "apple" can't match the brand "Apple Airpods".
+    if r["keywords"]:
         seen: set = set()
         merged: list[dict] = []
         for kw in r["keywords"]:
-            for p in await tools.search_products(kw, max_paise):
+            for p in await tools.search_products(kw, max_paise, categories=(r["categories"] or None), name_only=True):
                 if p["id"] not in seen:
                     seen.add(p["id"])
                     merged.append(p)
-        products = merged
-        await tools.log_run(run_id, "search", {"keywords": r["keywords"], "layer": "keyword"}, {"matches": len(products)})
+        await tools.log_run(run_id, "search", {"keywords": r["keywords"], "layer": "keyword"}, {"matches": len(merged)})
+        if merged:
+            return merged
+    # Category layer (broad) — for coarse terms with no keyword group.
+    if r["categories"]:
+        products = await tools.search_products("", max_paise, categories=r["categories"])
+        await tools.log_run(run_id, "search", {"categories": r["categories"], "layer": "category"}, {"matches": len(products)})
     return products
 
 

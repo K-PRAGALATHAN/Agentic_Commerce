@@ -41,6 +41,7 @@ catalogRouter.get(
     const catsParam = req.query.categories as string | undefined;
     const products = await getCatalog({
       q: req.query.q as string | undefined,
+      name: req.query.name as string | undefined,
       category: req.query.category as string | undefined,
       categories: catsParam ? catsParam.split(',').map((c) => c.trim()).filter(Boolean) : undefined,
       maxPaise: req.query.maxPaise ? Number(req.query.maxPaise) : undefined,
