@@ -23,6 +23,10 @@ STOP = {
     "buy", "purchase", "order", "get", "me", "a", "an", "the", "please", "want", "need",
     "find", "show", "under", "below", "less", "than", "for", "with", "to", "i", "some",
     "rs", "rupees", "rupee", "inr", "of", "and", "my",
+    # filler / browse words — keep the keyword to the actual product term
+    "list", "you", "have", "what", "all", "are", "is", "do", "does", "there", "available",
+    "dei", "bro", "man", "can", "could", "would", "give", "tell", "us", "browse", "option",
+    "options", "suggest", "recommend", "looking", "any", "them", "see", "know", "your", "we",
 }
 
 
@@ -115,13 +119,15 @@ SYNONYMS = {
 
 
 def _synonym_resolve(term: str, cats: list[str]) -> tuple[list[str], list[str]]:
-    t = term.lower()
+    # Match on WHOLE WORDS, not substrings — otherwise "table" hits inside
+    # "vege(table)s" and wrongly maps vegetables -> furniture.
+    words = set(re.findall(r"[a-z]+", term.lower()))
     rc: list[str] = []
     for word, cat in SYNONYMS.items():
-        if word in t and cat in cats and cat not in rc:
+        if word in words and cat in cats and cat not in rc:
             rc.append(cat)
-    for c in cats:  # the term itself overlaps a category name
-        if (c.lower() in t or t in c.lower()) and c not in rc:
+    for c in cats:  # the term itself IS a category word
+        if c.lower() in words and c not in rc:
             rc.append(c)
     return rc, []
 
