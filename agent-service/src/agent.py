@@ -91,6 +91,82 @@ def _rank(products: list[dict], pref: str) -> list[dict]:
     return sorted(products, key=lambda p: (-float(p.get("rating") or 0), p["pricePaise"]))
 
 
+# General term -> real category. Best-effort fallback for keyless mode; the LLM
+# resolver (grounded in the live categories) is the primary path.
+SYNONYMS = {
+    "fruit": "groceries", "fruits": "groceries", "vegetable": "groceries", "vegetables": "groceries",
+    "veg": "groceries", "food": "groceries", "grocery": "groceries", "snack": "groceries", "snacks": "groceries",
+    "drink": "groceries", "drinks": "groceries", "beverage": "groceries", "beverages": "groceries",
+    "perfume": "fragrances", "perfumes": "fragrances", "scent": "fragrances", "cologne": "fragrances",
+    "makeup": "beauty", "cosmetic": "beauty", "cosmetics": "beauty", "skincare": "beauty",
+    "chair": "furniture", "table": "furniture", "bed": "furniture", "sofa": "furniture", "furnitures": "furniture",
+    "clothes": "tops", "clothing": "tops", "apparel": "tops", "wear": "tops",
+    "phone": "smartphones", "mobile": "smartphones", "laptop": "laptops",
+}
+
+
+def _synonym_resolve(term: str, cats: list[str]) -> tuple[list[str], list[str]]:
+    t = term.lower()
+    rc: list[str] = []
+    for word, cat in SYNONYMS.items():
+        if word in t and cat in cats and cat not in rc:
+            rc.append(cat)
+    for c in cats:  # the term itself overlaps a category name
+        if (c.lower() in t or t in c.lower()) and c not in rc:
+            rc.append(c)
+    return rc, []
+
+
+async def _resolve(term: str, run_id: str, tools: Tools) -> dict:
+    """Map a general term ('fruits') to REAL categories/keywords from the live catalog."""
+    cats = [c["category"] for c in await tools.clusters()]
+    if model.is_available() and cats:
+        try:
+            res = await model.chat([
+                {"role": "system", "content": (
+                    "Map the user's product query to the store's REAL categories. Return JSON only: "
+                    "{\"categories\":[subset of the given list], \"keywords\":[specific product words]}. "
+                    "Only use categories from the provided list; [] if none fit."
+                )},
+                {"role": "user", "content": f"Query: {term}\nAvailable categories: {cats}"},
+            ], temperature=0)
+            await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
+            data = model.extract_json(res["text"]) or {}
+            rc = [c for c in (data.get("categories") or []) if c in cats]
+            kw = [str(k).strip() for k in (data.get("keywords") or []) if str(k).strip()]
+            if rc or kw:
+                await tools.log_run(run_id, "resolver", {"term": term}, {"categories": rc, "keywords": kw})
+                return {"categories": rc, "keywords": kw}
+        except Exception:
+            pass
+    rc, kw = _synonym_resolve(term, cats)
+    await tools.log_run(run_id, "resolver", {"term": term, "mode": "fallback"}, {"categories": rc, "keywords": kw})
+    return {"categories": rc, "keywords": kw}
+
+
+async def _find_products(term: str, max_paise, run_id: str, tools: Tools) -> list[dict]:
+    """Layered search: literal -> resolved categories -> resolved keywords."""
+    products = await tools.search_products(term, max_paise)
+    await tools.log_run(run_id, "search", {"keyword": term, "layer": "literal"}, {"matches": len(products)})
+    if products:
+        return products
+    r = await _resolve(term, run_id, tools)
+    if r["categories"]:
+        products = await tools.search_products("", max_paise, categories=r["categories"])
+        await tools.log_run(run_id, "search", {"categories": r["categories"], "layer": "category"}, {"matches": len(products)})
+    if not products and r["keywords"]:
+        seen: set = set()
+        merged: list[dict] = []
+        for kw in r["keywords"]:
+            for p in await tools.search_products(kw, max_paise):
+                if p["id"] not in seen:
+                    seen.add(p["id"])
+                    merged.append(p)
+        products = merged
+        await tools.log_run(run_id, "search", {"keywords": r["keywords"], "layer": "keyword"}, {"matches": len(products)})
+    return products
+
+
 async def _explain(pick: dict, n: int, pref: str, run_id: str, tools: Tools) -> str:
     base = (f'I recommend "{pick["name"]}" at {rupees(pick["pricePaise"])} '
             f'({float(pick.get("rating") or 0):.1f}★)')
@@ -176,8 +252,7 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
     # 2b) Browse — cherry-pick the top products and present as cards (no auto-buy).
     if intent == "browse":
         kw = parsed.get("keyword", "")
-        products = await tools.search_products(kw, parsed.get("max_paise"))
-        await tools.log_run(run_id, "search", {"keyword": kw, "mode": "browse"}, {"matches": len(products)})
+        products = await _find_products(kw, parsed.get("max_paise"), run_id, tools)
         if not products:
             return _reply(user_id, f'I couldn\'t find any "{kw}". Want to try another term?', "no_results")
         top = _rank(products, pref_rank)[:6]
@@ -193,8 +268,7 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
     if len(items) > 1:
         return await _batch(user_id, items, max_paise, pref_rank, buying_mode, run_id, tools)
 
-    products = await tools.search_products(keyword, max_paise)
-    await tools.log_run(run_id, "search", {"keyword": keyword, "max_paise": max_paise}, {"matches": len(products)})
+    products = await _find_products(keyword, max_paise, run_id, tools)
     if not products:
         widen = " (try a higher budget or a different term)" if max_paise else ""
         return _reply(user_id, f'No products matched "{keyword or message}"{widen}. I never guess — want to try another search?', "no_results")
@@ -239,8 +313,7 @@ async def _batch(user_id, items, max_paise, pref_rank, buying_mode, run_id, tool
     Avoids per-product round-trips to the money layer (single guardrail + ledger)."""
     picks, missing = [], []
     for kw in items:
-        products = await tools.search_products(kw, max_paise)
-        await tools.log_run(run_id, "search", {"keyword": kw, "max_paise": max_paise}, {"matches": len(products)})
+        products = await _find_products(kw, max_paise, run_id, tools)
         if not products:
             missing.append(kw)
             continue

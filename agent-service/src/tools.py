@@ -38,13 +38,20 @@ class Tools:
         return (await self._get("/me")).get("user", {})
 
     # --- read tools ---
-    async def search_products(self, q: str = "", max_paise: int | None = None) -> list[dict]:
-        path = f"/catalog?limit=50"
+    async def search_products(self, q: str = "", max_paise: int | None = None, categories: list[str] | None = None) -> list[dict]:
+        params: dict[str, str] = {"limit": "50"}
         if q:
-            path += f"&q={httpx.QueryParams({'q': q})['q']}"
+            params["q"] = q
         if max_paise is not None:
-            path += f"&maxPaise={max_paise}"
-        return (await self._get(path)).get("products", [])
+            params["maxPaise"] = str(max_paise)
+        if categories:
+            params["categories"] = ",".join(categories)
+        qs = httpx.QueryParams(params)
+        return (await self._get(f"/catalog?{qs}")).get("products", [])
+
+    async def clusters(self) -> list[dict]:
+        # Live category vocabulary [{category, count}] — grounds the resolver.
+        return (await self._get("/kg/clusters")).get("clusters", [])
 
     async def get_context(self) -> dict:
         return await self._get("/agent/context")  # {preferences, recentOrders}
