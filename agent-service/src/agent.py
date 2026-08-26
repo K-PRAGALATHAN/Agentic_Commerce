@@ -59,29 +59,38 @@ def _parse_rule_based(message: str) -> dict:
 
 
 async def _parse(message: str, run_id: str, tools: Tools) -> dict:
+    rb = _parse_rule_based(message)
     if not model.is_available():
-        return _parse_rule_based(message)
-    prompt = [
-        {"role": "system", "content": (
-            "Extract shopping intent as JSON only. Fields: intent "
-            "('shop' to buy | 'browse' to just list/show options | 'general' | 'confirm'), "
-            "items (array of product phrases; [] if none), max_rupees (number or null). No prose."
-        )},
-        {"role": "user", "content": message},
-    ]
+        return rb
+    # #3 — trust the rule-based result for CLEAR cases (no LLM round-trip):
+    #   a confirmation, or a shop/browse with an extracted keyword.
+    if rb["intent"] == "confirm" or (rb["intent"] in ("shop", "browse") and rb.get("keyword")):
+        return rb
+    # #2 — ambiguous: ONE grounded LLM call returns intent + items + resolved
+    # categories + price, so no separate resolver call is needed downstream.
     try:
-        res = await model.chat(prompt, temperature=0)
+        cats = [c["category"] for c in await tools.clusters()]
+        res = await model.chat([
+            {"role": "system", "content": (
+                "Classify the shopping message. Return JSON only: {intent:('shop'|'browse'|'general'|'confirm'), "
+                "items:[product phrases], categories:[subset of the given list], max_rupees:(number|null)}. "
+                "Only use categories from the provided list; [] if none fit."
+            )},
+            {"role": "user", "content": f"Message: {message}\nAvailable categories: {cats}"},
+        ], temperature=0)
         await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
         data = model.extract_json(res["text"]) or {}
         items = [str(x).strip() for x in (data.get("items") or []) if str(x).strip()]
+        rc = [c for c in (data.get("categories") or []) if c in cats]
         return {
-            "intent": data.get("intent", "shop"),
+            "intent": data.get("intent", "general"),
             "keyword": items[0] if items else "",
             "items": items,
+            "categories": rc,
             "max_paise": int(data["max_rupees"] * 100) if data.get("max_rupees") else None,
         }
     except Exception:
-        return _parse_rule_based(message)
+        return rb
 
 
 def _rank(products: list[dict], pref: str) -> list[dict]:
@@ -120,6 +129,12 @@ def _synonym_resolve(term: str, cats: list[str]) -> tuple[list[str], list[str]]:
 async def _resolve(term: str, run_id: str, tools: Tools) -> dict:
     """Map a general term ('fruits') to REAL categories/keywords from the live catalog."""
     cats = [c["category"] for c in await tools.clusters()]
+    # Fast path — deterministic synonym/category match, no LLM round-trip.
+    rc, kw = _synonym_resolve(term, cats)
+    if rc:
+        await tools.log_run(run_id, "resolver", {"term": term, "mode": "synonym"}, {"categories": rc, "keywords": kw})
+        return {"categories": rc, "keywords": kw}
+    # Smart path — LLM maps ambiguous terms, grounded in the real categories.
     if model.is_available() and cats:
         try:
             res = await model.chat([
@@ -139,17 +154,23 @@ async def _resolve(term: str, run_id: str, tools: Tools) -> dict:
                 return {"categories": rc, "keywords": kw}
         except Exception:
             pass
-    rc, kw = _synonym_resolve(term, cats)
-    await tools.log_run(run_id, "resolver", {"term": term, "mode": "fallback"}, {"categories": rc, "keywords": kw})
-    return {"categories": rc, "keywords": kw}
+    # Nothing matched (synonym already tried at the top).
+    await tools.log_run(run_id, "resolver", {"term": term, "mode": "none"}, {"categories": [], "keywords": []})
+    return {"categories": [], "keywords": []}
 
 
-async def _find_products(term: str, max_paise, run_id: str, tools: Tools) -> list[dict]:
-    """Layered search: literal -> resolved categories -> resolved keywords."""
+async def _find_products(term: str, max_paise, run_id: str, tools: Tools, pre_categories: list[str] | None = None) -> list[dict]:
+    """Layered search: literal -> (pre-resolved | resolved) categories -> keywords."""
     products = await tools.search_products(term, max_paise)
     await tools.log_run(run_id, "search", {"keyword": term, "layer": "literal"}, {"matches": len(products)})
     if products:
         return products
+    # Categories already resolved by the merged parse call → no extra LLM round-trip.
+    if pre_categories:
+        products = await tools.search_products("", max_paise, categories=pre_categories)
+        await tools.log_run(run_id, "search", {"categories": pre_categories, "layer": "category-pre"}, {"matches": len(products)})
+        if products:
+            return products
     r = await _resolve(term, run_id, tools)
     if r["categories"]:
         products = await tools.search_products("", max_paise, categories=r["categories"])
@@ -242,7 +263,7 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
     # 2b) Browse — cherry-pick the top products and present as cards (no auto-buy).
     if intent == "browse":
         kw = parsed.get("keyword", "")
-        products = await _find_products(kw, parsed.get("max_paise"), run_id, tools)
+        products = await _find_products(kw, parsed.get("max_paise"), run_id, tools, parsed.get("categories"))
         if not products:
             return _reply(user_id, f'I couldn\'t find any "{kw}". Want to try another term?', "no_results")
         top = _rank(products, pref_rank)[:6]
@@ -258,7 +279,7 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
     if len(items) > 1:
         return await _batch(user_id, items, max_paise, pref_rank, buying_mode, run_id, tools)
 
-    products = await _find_products(keyword, max_paise, run_id, tools)
+    products = await _find_products(keyword, max_paise, run_id, tools, parsed.get("categories"))
     if not products:
         widen = " (try a higher budget or a different term)" if max_paise else ""
         return _reply(user_id, f'No products matched "{keyword or message}"{widen}. I never guess — want to try another search?', "no_results")
