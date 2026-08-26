@@ -15,6 +15,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
+# Reused client (keeps the TLS connection to OpenRouter warm across calls).
+_client = httpx.AsyncClient(timeout=30.0)
+
 
 def is_available() -> bool:
     return bool(API_KEY)
@@ -41,14 +44,13 @@ async def chat(messages: list[dict], temperature: float = 0.3) -> dict:
     """
     if not API_KEY:
         raise RuntimeError("no OpenRouter key")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-            json={"model": MODEL, "messages": messages, "temperature": temperature},
-        )
-        r.raise_for_status()
-        data = r.json()
+    r = await _client.post(
+        OPENROUTER_URL,
+        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+        json={"model": MODEL, "messages": messages, "temperature": temperature},
+    )
+    r.raise_for_status()
+    data = r.json()
     usage = data.get("usage", {})
     return {
         "text": data["choices"][0]["message"]["content"],

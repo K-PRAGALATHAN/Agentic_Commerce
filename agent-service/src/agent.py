@@ -167,21 +167,11 @@ async def _find_products(term: str, max_paise, run_id: str, tools: Tools) -> lis
     return products
 
 
-async def _explain(pick: dict, n: int, pref: str, run_id: str, tools: Tools) -> str:
-    base = (f'I recommend "{pick["name"]}" at {rupees(pick["pricePaise"])} '
-            f'({float(pick.get("rating") or 0):.1f}★)')
+# Template explanation — no LLM round-trip (kept fast; the reason is deterministic).
+def _explain(pick: dict, n: int, pref: str) -> str:
     reason = "cheapest match" if pref == "cost" else f"best-rated of {n} matches"
-    if not model.is_available():
-        return f"{base} — {reason}."
-    try:
-        res = await model.chat([
-            {"role": "system", "content": "One friendly sentence on why this product is a good pick. No markdown."},
-            {"role": "user", "content": f"Product: {pick['name']}, {rupees(pick['pricePaise'])}, rating {pick.get('rating')}, reason: {reason}."},
-        ])
-        await tools.log_model_cost(run_id, res["model"], res["tokens_in"], res["tokens_out"], model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]))
-        return res["text"].strip()
-    except Exception:
-        return f"{base} — {reason}."
+    return (f'I recommend "{pick["name"]}" at {rupees(pick["pricePaise"])} '
+            f'({float(pick.get("rating") or 0):.1f}★) — {reason}.')
 
 
 async def _general(message: str, ctx: dict, run_id: str, tools: Tools) -> dict:
@@ -275,7 +265,7 @@ async def _handle(user_id: str, message: str, tools: Tools) -> dict:
 
     ranked = _rank(products, pref_rank)
     pick = ranked[0]
-    why = await _explain(pick, len(products), pref_rank, run_id, tools)
+    why = _explain(pick, len(products), pref_rank)
     await tools.log_run(run_id, "explainer", {"candidates": len(products), "pref": pref_rank}, {"pick": pick["name"], "price_paise": pick["pricePaise"]})
 
     # Upsell + cross-sell agents (cross-sell = order co-occurrence = KG seed).

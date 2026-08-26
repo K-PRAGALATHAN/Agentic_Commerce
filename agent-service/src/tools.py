@@ -3,12 +3,29 @@
 CREDENTIAL ISOLATION: the user's JWT is held here and sent as an Authorization
 header. It is never placed into a model prompt. Money-moving tools (checkout)
 execute in the backend, behind its guardrails — the agent only *requests* them.
+
+PERF: one shared AsyncClient (connection pooling) is reused across calls, and
+telemetry writes (trace/cost/memory) are fire-and-forget so they never sit in
+the response path.
 """
+import asyncio
 import os
 
 import httpx
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:4000")
+
+# Shared connection pool — avoids a fresh TCP+TLS handshake per call.
+_client = httpx.AsyncClient(timeout=20.0)
+
+# Keep references to background telemetry tasks so they aren't GC'd mid-flight.
+_bg: set = set()
+
+
+def _schedule(coro) -> None:
+    t = asyncio.create_task(coro)
+    _bg.add(t)
+    t.add_done_callback(_bg.discard)
 
 
 class Tools:
@@ -17,24 +34,27 @@ class Tools:
         self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     async def _get(self, path: str) -> dict:
-        async with httpx.AsyncClient(timeout=15.0) as c:
-            r = await c.get(f"{BACKEND_URL}{path}", headers=self._headers)
-            r.raise_for_status()
-            return r.json()
+        r = await _client.get(f"{BACKEND_URL}{path}", headers=self._headers)
+        r.raise_for_status()
+        return r.json()
 
     async def _post(self, path: str, body: dict | None = None) -> dict:
-        async with httpx.AsyncClient(timeout=20.0) as c:
-            r = await c.post(f"{BACKEND_URL}{path}", headers=self._headers, json=body or {})
-            # Return body even on non-2xx so the agent can handle gated/failed gracefully.
-            try:
-                data = r.json()
-            except Exception:
-                data = {"error": f"HTTP {r.status_code}"}
-            data["_status"] = r.status_code
-            return data
+        r = await _client.post(f"{BACKEND_URL}{path}", headers=self._headers, json=body or {})
+        try:
+            data = r.json()
+        except Exception:
+            data = {"error": f"HTTP {r.status_code}"}
+        data["_status"] = r.status_code
+        return data
+
+    async def _fire(self, path: str, body: dict) -> None:
+        # best-effort background write; never raises into the request path
+        try:
+            await self._post(path, body)
+        except Exception:
+            pass
 
     async def me(self) -> dict:
-        # Resolves + validates the user from their token (401 propagates if invalid).
         return (await self._get("/me")).get("user", {})
 
     # --- read tools ---
@@ -50,29 +70,16 @@ class Tools:
         return (await self._get(f"/catalog?{qs}")).get("products", [])
 
     async def clusters(self) -> list[dict]:
-        # Live category vocabulary [{category, count}] — grounds the resolver.
         return (await self._get("/kg/clusters")).get("clusters", [])
 
     async def get_context(self) -> dict:
-        return await self._get("/agent/context")  # {preferences, recentOrders}
+        return await self._get("/agent/context")  # {preferences, recentOrders, memory, wiki}
 
     async def upsell(self, product_id: str) -> dict | None:
         return (await self._get(f"/catalog/{product_id}/upsell")).get("upsell")
 
     async def cross_sell(self, product_id: str) -> list[dict]:
         return (await self._get(f"/catalog/{product_id}/cross-sell")).get("crossSell", [])
-
-    async def log_run(self, run_id: str, agent: str, inp, out, status: str = "ok") -> None:
-        try:
-            await self._post("/agent/run", {"runId": run_id, "agent": agent, "input": inp, "output": out, "status": status})
-        except Exception:
-            pass  # trace logging must never break the conversation
-
-    async def remember(self, role: str, content: str) -> None:
-        try:
-            await self._post("/agent/memory", {"role": role, "content": content})
-        except Exception:
-            pass  # persistent memory is best-effort
 
     # --- action tools (backend enforces guardrails) ---
     async def add_to_cart(self, product_id: str, qty: int = 1) -> dict:
@@ -85,8 +92,12 @@ class Tools:
         body = {"confirmOverLimit": True} if confirm_over_limit else {}
         return await self._post("/orders/checkout", body)
 
+    # --- telemetry (fire-and-forget: scheduled, not awaited in the response path) ---
     async def log_model_cost(self, run_id: str, model: str, tokens_in: int, tokens_out: int, cost: float = 0.0) -> None:
-        try:
-            await self._post("/agent/model-cost", {"runId": run_id, "model": model, "tokensIn": tokens_in, "tokensOut": tokens_out, "cost": cost})
-        except Exception:
-            pass  # telemetry must never break the conversation
+        _schedule(self._fire("/agent/model-cost", {"runId": run_id, "model": model, "tokensIn": tokens_in, "tokensOut": tokens_out, "cost": cost}))
+
+    async def log_run(self, run_id: str, agent: str, inp, out, status: str = "ok") -> None:
+        _schedule(self._fire("/agent/run", {"runId": run_id, "agent": agent, "input": inp, "output": out, "status": status}))
+
+    async def remember(self, role: str, content: str) -> None:
+        _schedule(self._fire("/agent/memory", {"role": role, "content": content}))
