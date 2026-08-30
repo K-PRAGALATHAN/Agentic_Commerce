@@ -15,6 +15,12 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     res.status(err.status).json({ error: err.message });
     return;
   }
+  // Multer rejects oversized uploads with its own error code; without this it
+  // would surface as a bare 500 instead of a message the merchant can act on.
+  if ((err as { code?: string }).code === 'LIMIT_FILE_SIZE') {
+    res.status(413).json({ error: 'image is too large (max 2 MB)' });
+    return;
+  }
   if (err instanceof ZodError) {
     res.status(400).json({ error: 'validation failed', details: err.issues });
     return;

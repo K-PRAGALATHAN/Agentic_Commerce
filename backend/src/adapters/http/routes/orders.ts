@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { checkout, confirmPayment, listOrders } from '../../../application/orders.js';
+import { checkout, confirmPayment, listOrders, recordPaymentFailure } from '../../../application/orders.js';
 import { requestRefund } from '../../../application/refunds.js';
 import { config } from '../../../config/env.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -13,17 +13,22 @@ ordersRouter.post(
   '/orders/checkout',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { sessionLimitPaise, confirmOverLimit } = z
-      .object({ sessionLimitPaise: z.number().int().positive().optional(), confirmOverLimit: z.boolean().optional() })
+    const { sessionLimitPaise, confirmOverLimit, discountCode, cartId } = z
+      .object({
+        sessionLimitPaise: z.number().int().positive().optional(),
+        confirmOverLimit: z.boolean().optional(),
+        discountCode: z.string().max(40).optional(),
+        cartId: z.string().uuid().optional(),
+      })
       .parse(req.body ?? {});
-    const result = await checkout(req.user!.sub, { sessionLimitPaise, confirmOverLimit });
+    const result = await checkout(req.user!.sub, { sessionLimitPaise, confirmOverLimit, discountCode, cartId });
     if (result.gated) {
       // BOUNDED: over-limit — no order, no money. Frontend/agent routes to confirmation.
-      res.json({ gated: true, guard: result.guard });
+      res.json({ gated: true, guard: result.guard, discount: result.discount ?? null });
       return;
     }
     // key_id is public and needed by the frontend Razorpay widget; key_secret never leaves the server.
-    res.json({ gated: false, order: result.order, razorpayOrderId: result.razorpayOrderId, guard: result.guard, razorpayKeyId: config.razorpay.keyId });
+    res.json({ gated: false, order: result.order, razorpayOrderId: result.razorpayOrderId, guard: result.guard, discount: result.discount ?? null, razorpayKeyId: config.razorpay.keyId });
   }),
 );
 
@@ -47,6 +52,19 @@ ordersRouter.post(
     );
     // A failed verification is a graceful, expected outcome — not an HTTP error.
     res.json(result);
+  }),
+);
+
+// The client reports a decline / cancellation so it lands in the audit trail.
+// The order is marked failed and the cart is left intact for a retry.
+ordersRouter.post(
+  '/orders/:id/payment-failed',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { reason, paymentId } = z
+      .object({ reason: z.string().max(300).optional(), paymentId: z.string().optional() })
+      .parse(req.body ?? {});
+    res.json(await recordPaymentFailure(req.user!.sub, req.params.id, reason ?? 'declined', paymentId));
   }),
 );
 

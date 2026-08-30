@@ -12,6 +12,9 @@ development.md
 .env.*
 !.env.example
 
+# --- Uploaded product images (native runs; Docker uses a volume) ---
+backend/uploads/
+
 # --- Node ---
 node_modules/
 dist/

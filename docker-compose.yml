@@ -33,11 +33,16 @@ services:
       REDIS_URL: redis://redis:6379
       BACKEND_PORT: 4000
       MIGRATIONS_DIR: /app/infra/migrations
+      UPLOAD_DIR: /app/uploads
+      # The backend calls the agent service for description drafting.
+      AGENT_URL: http://agent-service:8010
     volumes:
       # infra/ is outside the backend build context — mount migrations in for the runner.
       - ./infra/migrations:/app/infra/migrations:ro
       # Mount source for hot-reload (tsx watch) without rebuilding the image.
       - ./backend/src:/app/src
+      # Product images live on a named volume so they survive a rebuild.
+      - uploads:/app/uploads
     ports:
       - "4000:4000"
     depends_on:
@@ -51,13 +56,15 @@ services:
     build: ./agent-service
     env_file: .env
     environment:
-      AGENT_PORT: 8000
+      AGENT_PORT: 8010
       BACKEND_URL: http://backend:4000
     volumes:
       - ./agent-service/src:/app/src
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      # The golden set + eval runner, so evals run against the live service.
+      - ./agent-service/evals:/app/evals
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8010 --reload
     ports:
-      - "8000:8000"
+      - "8010:8010"
     depends_on:
       - backend
 
@@ -65,7 +72,7 @@ services:
     build: ./frontend
     environment:
       BACKEND_URL: http://backend:4000
-      AGENT_URL: http://agent-service:8000
+      AGENT_URL: http://agent-service:8010
     volumes:
       # Mount source for Vite hot-reload without rebuilding the image.
       - ./frontend/src:/app/src
@@ -78,3 +85,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

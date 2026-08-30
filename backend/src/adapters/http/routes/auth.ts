@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { signup, login, me, changePassword, requestPasswordReset, resetPassword } from '../../../application/auth.js';
+import { signup, login, me, changePassword, requestPasswordReset, resetPassword, refreshSession, revokeSessions } from '../../../application/auth.js';
 import { writeAudit } from '../../../application/audit.js';
 import { config } from '../../../config/env.js';
 import { warmSession } from '../../redis/redis.js';
@@ -41,6 +41,29 @@ authRouter.post(
     const [cart, orders] = await Promise.all([getCart(user.id), listOrders(user.id)]);
     await warmSession(user.id, { cart, recentOrders: orders.slice(0, 5) });
     res.json({ user, tokens });
+  }),
+);
+
+// Silent renewal. Rate-limited like the other credential endpoints: a valid
+// refresh token is a credential, and this is where one would be brute-forced.
+authRouter.post(
+  '/auth/refresh',
+  authLimit,
+  asyncHandler(async (req, res) => {
+    const { refresh } = z.object({ refresh: z.string().min(10) }).parse(req.body);
+    const { user, tokens } = await refreshSession(refresh);
+    res.json({ user, tokens });
+  }),
+);
+
+// Signing out ends the session on the server too, so a copied refresh token
+// stops working the moment the user logs out.
+authRouter.post(
+  '/auth/logout',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    await revokeSessions(req.user!.sub);
+    res.json({ ok: true });
   }),
 );
 

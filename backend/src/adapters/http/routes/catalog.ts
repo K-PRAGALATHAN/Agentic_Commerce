@@ -1,14 +1,34 @@
 import { Router } from 'express';
-import { getCatalog, getProduct, syncCatalog } from '../../../application/catalog.js';
+import { getCatalog, getProduct } from '../../../application/catalog.js';
 import { listWiki } from '../../../application/wiki.js';
+import { listCollections } from '../../../application/collections.js';
+import { personalisedRows, recordView } from '../../../application/storefront.js';
+import { requireAuth } from '../middleware/auth.js';
 import { clusters } from '../../../application/kg.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
 
 export const catalogRouter = Router();
 
 // Public shared knowledge (agent consistency) + product clusters.
 catalogRouter.get('/wiki', asyncHandler(async (_req, res) => res.json({ wiki: await listWiki() })));
+// The storefront, organised around this customer's own activity.
+catalogRouter.get(
+  '/storefront',
+  requireAuth,
+  asyncHandler(async (req, res) => res.json({ rows: await personalisedRows(req.user!.sub) })),
+);
+
+// Fire-and-forget from the product page; feeds the "Continue browsing" row.
+catalogRouter.post(
+  '/catalog/:id/view',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    await recordView(req.user!.sub, req.params.id);
+    res.json({ ok: true });
+  }),
+);
+
+catalogRouter.get('/collections', asyncHandler(async (_req, res) => res.json({ collections: await listCollections() })));
 catalogRouter.get('/kg/clusters', asyncHandler(async (_req, res) => res.json({ clusters: await clusters() })));
 
 // ACP-style agent-readable catalog feed: a clean, machine-consumable product feed
@@ -34,7 +54,7 @@ catalogRouter.get(
   }),
 );
 
-// Public read — the single catalog read path (Door 1 + Door 2 products both appear here).
+// Public read — the single catalog read path.
 catalogRouter.get(
   '/catalog',
   asyncHandler(async (req, res) => {
@@ -43,6 +63,7 @@ catalogRouter.get(
       q: req.query.q as string | undefined,
       name: req.query.name as string | undefined,
       category: req.query.category as string | undefined,
+      collectionId: req.query.collectionId as string | undefined,
       categories: catsParam ? catsParam.split(',').map((c) => c.trim()).filter(Boolean) : undefined,
       maxPaise: req.query.maxPaise ? Number(req.query.maxPaise) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
@@ -55,15 +76,5 @@ catalogRouter.get(
   '/catalog/:id',
   asyncHandler(async (req, res) => {
     res.json({ product: await getProduct(req.params.id) });
-  }),
-);
-
-// Door 1 — trigger the internet-fetch seed. Restricted to merchant/admin.
-catalogRouter.post(
-  '/admin/sync-catalog',
-  requireAuth,
-  requireRole('merchant', 'admin'),
-  asyncHandler(async (_req, res) => {
-    res.json(await syncCatalog());
   }),
 );

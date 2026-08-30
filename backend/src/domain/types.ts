@@ -11,23 +11,83 @@ export interface User {
   createdAt: string;
 }
 
+export interface ProductImage {
+  id: string;
+  url: string;
+  alt: string;
+  position: number;
+}
+
+// The sellable unit. Price and stock live HERE — the product row only carries a
+// display rollup (lowest price, total stock) maintained by a DB trigger.
+export interface Variant {
+  id: string;
+  productId: string;
+  title: string;
+  optionValues: Record<string, string>; // { Size: 'M', Color: 'Blue' }
+  pricePaise: Paise;
+  compareAtPaise: Paise | null;
+  sku: string;
+  barcode: string;
+  stock: number;
+  weightGrams: number;
+  imageUrl: string;
+  position: number;
+}
+
+export interface ProductOption {
+  name: string;     // 'Size'
+  values: string[]; // ['S','M','L']
+}
+
 export interface Product {
   id: string;
-  sourceId: string | null;   // Door 1: id from the fetched source; null for merchant-created
-  merchantId: string | null; // Door 2: owning merchant; null for seeded
+  merchantId: string | null; // owning merchant
   name: string;
   description: string;
-  pricePaise: Paise;
-  stock: number;
+  pricePaise: Paise;   // display rollup: lowest variant price
+  stock: number;       // display rollup: total variant stock
   category: string;
   rating: number;
-  image: string;
+  image: string;       // first image, kept for existing callers
   createdAt: string;
+
+  status: 'active' | 'draft';
+  productType: string;
+  vendor: string;
+  tags: string[];
+  compareAtPaise: Paise | null;
+  costPaise: Paise | null;
+  trackInventory: boolean;
+  sellWhenOutOfStock: boolean;
+  physical: boolean;
+  weightGrams: number;
+  countryOfOrigin: string;
+  hsCode: string;
+  seoTitle: string;
+  seoDescription: string;
+  options: ProductOption[];
+
+  images?: ProductImage[];
+  variants?: Variant[];
+}
+
+export interface Collection {
+  id: string;
+  merchantId: string;
+  title: string;
+  handle: string;
+  description: string;
+  image: string;
+  productCount?: number;
 }
 
 export interface CartItem {
   productId: string;
+  variantId: string;
+  variantTitle: string;
   name: string;
+  image: string;
   qty: number;
   pricePaise: Paise;
 }
@@ -35,6 +95,8 @@ export interface CartItem {
 export interface Cart {
   id: string;
   userId: string;
+  name: string;
+  isDefault: boolean;
   items: CartItem[];
   totalPaise: Paise;
 }

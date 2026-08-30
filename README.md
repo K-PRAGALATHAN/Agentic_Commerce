@@ -33,16 +33,14 @@ A customer says *"buy me a blue shirt under ₹600"* and the system:
 
 ---
 
-## 🧩 Catalog — two doors, one store
+## 🧩 Catalog — merchant-owned
 
-Products enter one `products` table through two paths that share the same normalizer and read path:
+Every product is created by a merchant through the **Products** console: title, description,
+price (entered in ₹, stored as integer paise), stock, category and an uploaded image. There is one
+read path — `getCatalog()` — that the storefront, the ACP feed and the AI assistant all share.
 
-- **Internet fetch** — a sync job seeds realistic demo products for fast development.
-- **Merchant admin UI** — a non-technical merchant adds / edits / deletes products (the "sellable merchant" story).
-
-Everything downstream reads only through a single `getCatalog()` — the agents never know which door a product came from.
-
----
+Product images are uploaded to `POST /merchant/uploads` (merchant-only, 2 MB, image types only,
+server-generated filenames) and served from `/uploads/*` off a Docker volume.
 
 ## 🤖 The multi-agent system
 

@@ -5,7 +5,7 @@ import { getUserPrefs } from '../../../application/guardrail.js';
 import { listOrders } from '../../../application/orders.js';
 import { logAgentRun } from '../../../application/agentRuns.js';
 import { getUpsell, getCrossSell } from '../../../application/recommend.js';
-import { appendMemory, recentMemory } from '../../../application/agentMemory.js';
+import { appendMemory, recentMemory, userFacts } from '../../../application/agentMemory.js';
 import { listWiki } from '../../../application/wiki.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errors.js';
@@ -19,13 +19,17 @@ agentRouter.get(
   '/agent/context',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const [preferences, orders, memory, wiki] = await Promise.all([
+    // conversationId scopes the TURNS. Facts, orders and the wiki are about the
+    // person and the store, so they follow the customer into every chat.
+    const convo = (req.query.conversationId as string | undefined) || null;
+    const [preferences, orders, memory, facts, wiki] = await Promise.all([
       getUserPrefs(req.user!.sub),
       listOrders(req.user!.sub),
-      recentMemory(req.user!.sub, 12),
+      recentMemory(req.user!.sub, 12, convo),
+      userFacts(req.user!.sub),
       listWiki(),
     ]);
-    res.json({ preferences, recentOrders: orders.slice(0, 5), memory, wiki });
+    res.json({ preferences, recentOrders: orders.slice(0, 5), memory, facts, wiki });
   }),
 );
 
@@ -34,8 +38,10 @@ agentRouter.post(
   '/agent/memory',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { role, content } = z.object({ role: z.string(), content: z.string() }).parse(req.body);
-    await appendMemory(req.user!.sub, role, content);
+    const { role, content, conversationId } = z
+      .object({ role: z.string(), content: z.string(), conversationId: z.string().max(64).optional() })
+      .parse(req.body);
+    await appendMemory(req.user!.sub, role, content, conversationId ?? null);
     res.json({ ok: true });
   }),
 );
@@ -76,13 +82,15 @@ agentRouter.post(
 agentRouter.get(
   '/catalog/:id/upsell',
   asyncHandler(async (req, res) => {
-    res.json({ upsell: await getUpsell(req.params.id) });
+    const s = await getUpsell(req.params.id);
+    res.json({ upsell: s ? { ...s.product, reason: s.reason, via: s.via } : null });
   }),
 );
 
 agentRouter.get(
   '/catalog/:id/cross-sell',
   asyncHandler(async (req, res) => {
-    res.json({ crossSell: await getCrossSell(req.params.id) });
+    const items = await getCrossSell(req.params.id);
+    res.json({ crossSell: items.map((s) => ({ ...s.product, reason: s.reason, via: s.via })) });
   }),
 );

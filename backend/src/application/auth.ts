@@ -1,9 +1,10 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query, withTransaction } from '../adapters/db/pool.js';
 import { config } from '../config/env.js';
 import type { Role, User } from '../domain/types.js';
+import { writeAudit } from './audit.js';
 
 export interface TokenClaims {
   sub: string;
@@ -64,7 +65,7 @@ export async function login(email: string, password: string): Promise<{ user: Us
   const ok = await bcrypt.compare(password, res.rows[0].password_hash);
   if (!ok) throw new HttpError(401, 'invalid credentials');
   const user = await loadUser(res.rows[0].id);
-  return { user, tokens: issueTokens(user) };
+  return { user, tokens: await issueTokens(user) };
 }
 
 export interface Tokens {
@@ -72,15 +73,73 @@ export interface Tokens {
   refresh: string;
 }
 
-export function issueTokens(user: User): Tokens {
+// Each refresh token carries a unique id that is ALSO stored. Two tokens minted
+// in the same second are therefore still different, and — more importantly — the
+// server can tell which one is current.
+export async function issueTokens(user: User): Promise<Tokens> {
   const claims: TokenClaims = { sub: user.id, email: user.email, roles: user.roles, attributes: user.attributes };
   const access = jwt.sign(claims, config.jwt.secret, { expiresIn: config.jwt.accessTtl });
-  const refresh = jwt.sign({ sub: user.id }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshTtl });
+
+  const jti = randomUUID();
+  const refresh = jwt.sign({ sub: user.id, jti }, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshTtl });
+  await query(
+    `INSERT INTO refresh_tokens(jti, user_id, expires_at) VALUES ($1,$2,now() + ($3 || ' seconds')::interval)`,
+    [jti, user.id, String(config.jwt.refreshTtl)],
+  );
   return { access, refresh };
 }
 
 export function verifyAccess(token: string): TokenClaims {
   return jwt.verify(token, config.jwt.secret) as TokenClaims;
+}
+
+// Exchange a refresh token for a fresh pair. The refresh token is ROTATED on
+// every use, so a leaked one has a short useful life.
+//
+// Claims are re-read from the database rather than copied across, so a role or
+// spend-limit change takes effect on the next renewal instead of persisting in
+// a stale token for the life of the session.
+export async function refreshSession(refreshToken: string): Promise<{ user: User; tokens: Tokens }> {
+  let sub: string;
+  let jti: string | undefined;
+  try {
+    ({ sub, jti } = jwt.verify(refreshToken, config.jwt.refreshSecret) as { sub: string; jti?: string });
+  } catch {
+    throw new HttpError(401, 'session expired — please sign in again');
+  }
+  if (!jti) throw new HttpError(401, 'session expired — please sign in again');
+
+  const row = await query<{ revoked: boolean }>(
+    'SELECT revoked FROM refresh_tokens WHERE jti = $1 AND user_id = $2 AND expires_at > now()',
+    [jti, sub],
+  );
+
+  // Unknown or already-used token id. The signature is valid, so this token was
+  // real once — which means it was replayed, and the likeliest reason is that it
+  // leaked. Revoke every session for the user, not just this one.
+  if (!row.rowCount || row.rows[0].revoked) {
+    await revokeSessions(sub);
+    await writeAudit({
+      actor: 'system', action: 'refresh_token_reuse', target: sub,
+      reason: 'a refresh token was presented twice — all sessions revoked', verified: false,
+    });
+    throw new HttpError(401, 'session expired — please sign in again');
+  }
+
+  // Burn the one just used, then mint a fresh pair. Claims are re-read from the
+  // database, so a role or spend-limit change takes effect on the next renewal
+  // instead of persisting in a stale token for the life of the session.
+  await query('UPDATE refresh_tokens SET revoked = true WHERE jti = $1', [jti]);
+  const user = await loadUser(sub).catch(() => {
+    throw new HttpError(401, 'session expired — please sign in again');
+  });
+  return { user, tokens: await issueTokens(user) };
+}
+
+// Signing out — or changing a password — must end the session on the server,
+// not just in the browser.
+export async function revokeSessions(userId: string): Promise<void> {
+  await query('UPDATE refresh_tokens SET revoked = true WHERE user_id = $1 AND NOT revoked', [userId]);
 }
 
 export async function me(userId: string): Promise<User> {
@@ -99,6 +158,9 @@ export async function changePassword(userId: string, currentPassword: string, ne
   if (!ok) throw new HttpError(400, 'current password is incorrect');
   const hash = await bcrypt.hash(newPassword, 10);
   await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+  // Changing a password is how someone reacts to a suspected compromise, so it
+  // has to end sessions opened with the old one.
+  await revokeSessions(userId);
 }
 
 const RESET_TTL_MS = 15 * 60 * 1000;
@@ -130,6 +192,8 @@ export async function resetPassword(token: string, newPassword: string): Promise
     // Same user_id — identity unchanged; only the credential is replaced.
     await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, row.rows[0].user_id]);
     await client.query('UPDATE password_resets SET used = true WHERE id = $1', [row.rows[0].id]);
+    await client.query('UPDATE refresh_tokens SET revoked = true WHERE user_id = $1 AND NOT revoked',
+                       [row.rows[0].user_id]);
   });
 }
 

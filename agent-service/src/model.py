@@ -69,3 +69,41 @@ def extract_json(text: str) -> dict[str, Any] | None:
         return json.loads(m.group(0))
     except json.JSONDecodeError:
         return None
+
+
+async def chat_with_tools(messages: list[dict], tools: list[dict], temperature: float = 0.2) -> dict:
+    """One turn of the tool-calling loop.
+
+    Returns {'text', 'tool_calls', 'raw', 'model', 'tokens_in', 'tokens_out'}.
+    `raw` is the assistant message verbatim — it must be appended to the
+    conversation unchanged, because the tool results that follow reference the
+    tool_call ids inside it.
+    """
+    if not API_KEY:
+        raise RuntimeError("no OpenRouter key")
+    body: dict = {"model": MODEL, "messages": messages, "temperature": temperature}
+    if tools:
+        body["tools"] = tools
+        body["tool_choice"] = "auto"
+    r = await _client.post(
+        OPENROUTER_URL,
+        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+        json=body,
+    )
+    r.raise_for_status()
+    data = r.json()
+    msg = data["choices"][0]["message"]
+    usage = data.get("usage", {})
+    calls = [
+        {"id": c.get("id"), "name": c.get("function", {}).get("name"),
+         "arguments": c.get("function", {}).get("arguments", "{}")}
+        for c in (msg.get("tool_calls") or [])
+    ]
+    return {
+        "text": msg.get("content") or "",
+        "tool_calls": calls,
+        "raw": msg,
+        "model": MODEL,
+        "tokens_in": usage.get("prompt_tokens", 0),
+        "tokens_out": usage.get("completion_tokens", 0),
+    }

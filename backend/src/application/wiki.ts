@@ -20,3 +20,7 @@ export async function upsertWiki(key: string, title: string, content: string): P
     [key, title, content],
   );
 }
+
+export async function deleteWiki(key: string): Promise<void> {
+  await query('DELETE FROM wiki WHERE key = $1', [key]);
+}

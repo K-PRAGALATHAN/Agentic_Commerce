@@ -12,10 +12,15 @@ import { ordersRouter } from './routes/orders.js';
 import { merchantRouter } from './routes/merchant.js';
 import { observabilityRouter } from './routes/observability.js';
 import { agentRouter } from './routes/agent.js';
+import { uploadsRouter } from './routes/uploads.js';
 
 export function createApp() {
   const app = express();
   app.use(cors());
+
+  // Uploaded product images. Served before the body parsers — an image request
+  // has no body to parse. index:false so the directory is never listed.
+  app.use('/uploads', express.static(config.uploads.dir, { maxAge: '1d', index: false }));
 
   // Webhook FIRST — it needs the raw body for signature verification,
   // so it must run before the JSON body parser consumes the stream.
@@ -49,6 +54,7 @@ export function createApp() {
   app.use('/', merchantRouter);
   app.use('/', observabilityRouter);
   app.use('/', agentRouter);
+  app.use('/', uploadsRouter); // multer parses multipart per-route
 
   app.use(errorHandler);
   return app;

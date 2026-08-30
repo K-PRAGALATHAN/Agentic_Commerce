@@ -32,7 +32,7 @@ if not exist ".env" (
 echo [start] Building and starting all services...
 echo         Frontend : http://localhost:5173
 echo         Backend  : http://localhost:4000/health
-echo         Agent    : http://localhost:8000/health
+echo         Agent    : http://localhost:8010/health
 echo(
 echo         Press Ctrl+C to stop. (Run stop.cmd to remove containers.)
 echo(

@@ -398,5 +398,11 @@ def _checkout_reply(user_id: str, result: dict, prefix: str = "") -> dict:
         return _reply(user_id, f'{prefix}I couldn\'t complete checkout: {result.get("error", "unknown error")}. Your cart is safe — want to try again?', "error")
     order = result.get("order", {})
     text = (f'{prefix}Done ✅ — order {str(order.get("id",""))[:8]} created for {rupees(int(order.get("totalPaise", 0)))}. '
-            f'Complete the payment in the app to finish.')
-    return _reply(user_id, text, "checkout", {"order": order, "razorpayOrderId": result.get("razorpayOrderId")})
+            f'Pay below to finish — this pays THIS order, so nothing is charged twice.')
+    # razorpayKeyId is public and lets the chat open the widget on the order we just
+    # created, instead of the UI creating a second one.
+    return _reply(user_id, text, "checkout", {
+        "order": order,
+        "razorpayOrderId": result.get("razorpayOrderId"),
+        "razorpayKeyId": result.get("razorpayKeyId"),
+    })

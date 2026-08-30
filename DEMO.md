@@ -9,8 +9,9 @@
 
 ## 1. Merchant makes the store sellable (30s)
 1. Log in as **merchant** → **Merchant** tab.
-2. Click **"Seed from internet (Door 1)"** → ~30 products appear.
-3. Add one product by hand (**Door 2**) — price in ₹, stored as paise. *"Two doors, one catalog."*
+2. **Products** → **+ Add product** → drop an image, set title, price in ₹ and stock → Save.
+   *"Merchants own the catalogue; price is entered in rupees and stored as integer paise."*
+3. Scroll to **Documentation wiki** → add or edit an entry. *"This is what the assistant tells customers."*
 
 ## 2. AI buys — explainable + bounded (60s)
 1. Log in as **customer** → **Settings**: set **Spend limit = ₹100**, **Buying mode = conversational**.

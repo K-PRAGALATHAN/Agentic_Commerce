@@ -1,76 +1,126 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
 import { I } from '../lib/icons.js';
-import { listConvos, newConvo, upsertConvo } from '../lib/conversations.js';
+import { listConvos, removeConvo, onConversationsChanged } from '../lib/conversations.js';
 
-export function Sidebar() {
+interface Props {
+  cartCount: number;
+  chatOpen: boolean;
+  onNavigate: () => void;
+  onOpenConvo: (id: string) => void;
+  onNewConvo: () => void;
+}
+
+// Light left rail: primary nav, a collapsible assistant-conversation section,
+// Settings pinned to the bottom above the mode card.
+export function Sidebar({ cartCount, chatOpen, onNavigate, onOpenConvo, onNewConvo }: Props) {
   const nav = useNavigate();
   const loc = useLocation();
   const { user, logout } = useAuth();
   const isMerchant = user?.roles.includes('merchant') || user?.roles.includes('admin');
 
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('cs_collapsed') === '1'; } catch { return false; }
-  });
-  const [chatsOpen, setChatsOpen] = useState(false);
+  const [convosOpen, setConvosOpen] = useState(false);
+  // The list is read from localStorage during render, so it only refreshes when
+  // something re-renders this component. The panel writes to the same store, so
+  // a bump counter driven by the shared event keeps the two in step.
+  const [version, setVersion] = useState(0);
+  useEffect(() => onConversationsChanged(() => setVersion((v) => v + 1)), []);
+  const convos = convosOpen && user ? listConvos(user.id).slice(0, 8) : [];
+  void version; // read so the dependency is explicit rather than incidental
 
-  function toggleCollapsed() {
-    setCollapsed((c) => { const n = !c; try { localStorage.setItem('cs_collapsed', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  }
-
-  const name = (user?.email ?? '').split('@')[0] || 'Guest';
-  const initial = name.charAt(0).toUpperCase();
-
-  const item = (icon: keyof typeof I, label: string, to: string) => (
-    <div className={`cs-nav-item ${loc.pathname === to ? 'active' : ''}`} onClick={() => nav(to)} title={label}>
-      {I[icon]()}<span>{label}</span>
-    </div>
+  // While the assistant holds the centre, no page is showing — so nothing is active.
+  const item = (icon: keyof typeof I, label: string, to: string, count?: number) => (
+    <button
+      className={`sp-nav-item ${!chatOpen && loc.pathname === to ? 'active' : ''}`}
+      onClick={() => { onNavigate(); nav(to); }}
+      title={label}
+    >
+      {I[icon]()}
+      <span>{label}</span>
+      {count ? <span className="sp-count">{count}</span> : null}
+    </button>
   );
 
-  function openChats() {
-    if (collapsed) { nav('/chat'); return; }
-    setChatsOpen((o) => !o);
-  }
-  function pickChat(id: string) { nav(`/chat?c=${id}`); setChatsOpen(false); }
-  function startChat() { const c = newConvo(); if (user) upsertConvo(user.id, c); nav(`/chat?c=${c.id}`); setChatsOpen(false); }
-
-  const convos = chatsOpen && user ? listConvos(user.id) : [];
+  const sub = (label: string, to: string) => (
+    <button
+      className={`sp-sub-item ${!chatOpen && loc.pathname === to ? 'on' : ''}`}
+      onClick={() => { onNavigate(); nav(to); }}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <aside className={`cs-sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="cs-brand">
-        <div className="cs-avatar" onClick={toggleCollapsed} title={name}>{initial}</div>
-        <span className="cs-name">{name}</span>
-        <span className="cs-toggle" onClick={toggleCollapsed} title="Collapse">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
-        </span>
-      </div>
-
-      <nav className="cs-nav">
-        <div className={`cs-nav-item ${loc.pathname === '/chat' ? 'active' : ''}`} onClick={openChats} title="Chats">
-          {I.chats()}<span>Chats</span>
-          {!collapsed && <span className="cs-caret">{chatsOpen ? '▾' : '▸'}</span>}
-        </div>
-        {chatsOpen && !collapsed && (
-          <div className="cs-chats-drop">
-            <div className="cs-chat-new" onClick={startChat}>+ New chat</div>
-            {convos.length === 0 && <div className="cs-chat-empty">No chats yet</div>}
-            {convos.map((c) => (
-              <div key={c.id} className="cs-chat-hist" onClick={() => pickChat(c.id)} title={c.title}>{c.title}</div>
-            ))}
-          </div>
+    <aside className="sp-sidebar">
+      {/* A merchant runs a store; a customer shops. They get different navigation —
+          a merchant has no cart, and "Orders" means sales, not purchases. */}
+      <nav className="sp-nav">
+        {isMerchant ? (
+          <>
+            {item('products', 'Products', '/merchant')}
+            {/* Sub-items, the way Shopify nests Collections and Inventory. */}
+            <div className="sp-subnav">
+              {sub('Collections', '/merchant/collections')}
+              {sub('Inventory', '/merchant/inventory')}
+            </div>
+            {item('orders', 'Orders', '/orders')}
+            {item('customers', 'Customers', '/merchant/customers')}
+            {item('discount', 'Discounts', '/merchant/discounts')}
+            {item('audit', 'Analytics', '/analytics')}
+            {item('ledger', 'Audit trail', '/audit')}
+          </>
+        ) : (
+          <>
+            {item('home', 'Home', '/')}
+            {item('orders', 'Orders', '/orders')}
+            {item('cart', 'Cart', '/cart', cartCount)}
+            {item('audit', 'Analytics', '/audit')}
+          </>
         )}
-        {item('shop', 'Shop', '/')}
-        {item('cart', 'Cart', '/cart')}
-        {item('orders', 'Orders', '/orders')}
-        {isMerchant && item('merchant', 'Merchant', '/merchant')}
-        {item('audit', 'Audit', '/audit')}
-        {item('gear', 'Settings', '/settings')}
       </nav>
 
-      <div className="cs-side-foot">
-        <div className="cs-nav-item" onClick={logout} title="Logout">{I.logout()}<span>Logout</span></div>
+      <div className="sp-section" onClick={() => setConvosOpen((o) => !o)}>
+        <span>Assistant conversations</span>
+        <span style={{ display: 'flex', transform: convosOpen ? 'rotate(90deg)' : 'none' }}>{I.chevronRight()}</span>
+      </div>
+      {convosOpen && (
+        <div className="sp-sublist">
+          <div className="sp-sub-item new" onClick={onNewConvo}>+ New conversation</div>
+          {!convos.length && <div className="sp-sub-empty">No conversations yet</div>}
+          {convos.map((c) => (
+            <div key={c.id} className="sp-sub-item sp-sub-row" title={c.title}>
+              <span onClick={() => onOpenConvo(c.id)}>{c.title}</span>
+              <button
+                className="sp-rail-del"
+                title={`Delete "${c.title}"`}
+                aria-label={`Delete conversation ${c.title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // removeConvo fires the shared event, which bumps `version`
+                  // above and re-renders this list. The previous version toggled
+                  // one piece of state twice, which React batches into a no-op.
+                  if (user) removeConvo(user.id, c.id);
+                }}
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sp-side-foot">
+        {item('gear', 'Settings', '/settings')}
+        <button className="sp-nav-item" onClick={logout} title="Log out">
+          {I.logout()}<span>Log out</span>
+        </button>
+
+        <div className="sp-side-card">
+          <b>Test mode</b>
+          <p>Payments run on Razorpay test keys — no real money moves.</p>
+          <button onClick={() => { onNavigate(); nav('/settings'); }}>
+            {isMerchant ? 'Store settings' : 'Manage spend limit'}
+          </button>
+        </div>
       </div>
     </aside>
   );

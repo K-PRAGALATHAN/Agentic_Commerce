@@ -2,7 +2,7 @@
 
 > Snapshot of what's **done** vs **left** in each phase. Updated as work lands.
 > Source of truth for scope is `plan/`; this file tracks execution status.
-> Last updated: 2026-08-25.
+> Last updated: 2026-08-29.
 
 Legend: ✅ done · 🟡 partial · ⬜ not started
 
@@ -13,20 +13,20 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 - Leftover: none material.
 
 ## Phase 1 — Core Commerce 🟡
-- ✅ Catalog two-doors (fetch + merchant CRUD), cart, orders, Razorpay test adapter (order/verify/webhook/refund), audit, Redis warm-up, wireframes.
-- ⬜ **Frontend Razorpay checkout widget** — real card payment in the browser (currently checkout only creates the order server-side).
+- ✅ Catalog (merchant CRUD + image upload; Door-1 internet fetch removed 2026-08-29), cart, orders, Razorpay test adapter (order/verify/webhook/refund), audit, Redis warm-up, wireframes.
+- ✅ **Frontend Razorpay checkout widget** — real card payment in the browser (`frontend/src/lib/checkout.ts`).
 - ⬜ Webhook against a public URL (needs tunnel/deploy → Phase 6/7).
 
 ## Phase 2 — Payment Safety Spine 🟡
 - ✅ Guardrails (spend limit/mode/ranking, editable), intent ledger before money, refund gating (backend), model-cost table+endpoint, graceful-failure path (backend), audit/ledger panel + chain verify.
-- ⬜ **Refund UI** — customer "request refund" + merchant "approve/reject" view (backend done).
+- ✅ **Refund UI** — customer "request refund" (Orders) + merchant approve/reject queue (Merchant).
 - ⬜ **Model-cost UI** section + **real cost calculation** from token usage (currently ₹0 groundwork).
-- ⬜ **Live graceful-failure demo** in UI (depends on the payment widget + failure test card).
+- ✅ **Live graceful-failure demo** — decline/cancel now POST `/orders/:id/payment-failed`, so the failure appears in the audit trail, not just a toast.
 
 ## Phase 3 — Single-Agent MVP 🟡
 - ✅ Single agent, OpenRouter (gpt-5.6-luna) + keyless fallback, search→explain→guardrail→conversational confirm, general/sarcastic divert, error handling, credential isolation, model-cost logging.
 - 🟡 Memory: in-process per-user (mem0 pluggable, not wired — needs MEM0_API_KEY).
-- ⬜ Agent-initiated **payment completion** (payment link / hand-off to the widget).
+- ✅ Agent-initiated **payment completion** — the `checkout` reply carries `razorpayKeyId`, and the chat renders a **Pay now** card that pays THAT order via `payExistingOrder()` (no duplicate order).
 
 ## Phase 4 — Multi-Agent Orchestration ✅
 - 🟡 Orchestration = in-process agent flow with per-step trace (Temporal/LangGraph deferred = documented fallback).

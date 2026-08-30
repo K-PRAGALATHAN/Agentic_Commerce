@@ -29,8 +29,11 @@ def _schedule(coro) -> None:
 
 
 class Tools:
-    def __init__(self, token: str):
+    def __init__(self, token: str, conversation_id: str | None = None):
         self._token = token  # stays here, never returned to the model
+        # Which chat this turn belongs to. Turns are stored against it so a new
+        # chat starts clean; facts and orders stay attached to the person.
+        self.conversation_id = conversation_id
         self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     async def _get(self, path: str) -> dict:
@@ -73,7 +76,10 @@ class Tools:
         return (await self._get("/kg/clusters")).get("clusters", [])
 
     async def get_context(self) -> dict:
-        return await self._get("/agent/context")  # {preferences, recentOrders, memory, wiki}
+        path = "/agent/context"
+        if self.conversation_id:
+            path += f"?conversationId={self.conversation_id}"
+        return await self._get(path)  # {preferences, recentOrders, memory, facts, wiki}
 
     async def upsell(self, product_id: str) -> dict | None:
         return (await self._get(f"/catalog/{product_id}/upsell")).get("upsell")
@@ -82,15 +88,68 @@ class Tools:
         return (await self._get(f"/catalog/{product_id}/cross-sell")).get("crossSell", [])
 
     # --- action tools (backend enforces guardrails) ---
-    async def add_to_cart(self, product_id: str, qty: int = 1) -> dict:
-        return await self._post("/cart/items", {"productId": product_id, "qty": qty})
+    async def add_to_cart(self, product_id: str | None = None, variant_id: str | None = None,
+                          qty: int = 1, cart_id: str | None = None) -> dict:
+        # A variant is the sellable unit. When the agent only knows a product
+        # (a search result), the backend resolves that product's default variant.
+        body: dict = {"qty": qty}
+        if variant_id:
+            body["variantId"] = variant_id
+        else:
+            body["productId"] = product_id
+        if cart_id:
+            body["cartId"] = cart_id
+        return await self._post("/cart/items", body)
 
-    async def get_cart(self) -> dict:
-        return (await self._get("/cart")).get("cart", {})
+    async def list_carts(self) -> list[dict]:
+        return (await self._get("/carts")).get("carts", [])
 
-    async def checkout(self, confirm_over_limit: bool = False) -> dict:
-        body = {"confirmOverLimit": True} if confirm_over_limit else {}
+    async def create_cart(self, name: str) -> dict:
+        return await self._post("/carts", {"name": name})
+
+    async def move_item(self, variant_id: str, to_cart_id: str, from_cart_id: str | None = None) -> dict:
+        body = {"variantId": variant_id, "toCartId": to_cart_id}
+        if from_cart_id:
+            body["fromCartId"] = from_cart_id
+        return await self._post("/cart/move", body)
+
+    async def product_detail(self, product_id: str) -> dict:
+        """Full product incl. variants — needed before picking a size/colour."""
+        return (await self._get(f"/catalog/{product_id}")).get("product", {})
+
+    async def collections(self) -> list[dict]:
+        return (await self._get("/collections")).get("collections", [])
+
+    async def get_cart(self, cart_id: str | None = None) -> dict:
+        path = f"/cart?cartId={cart_id}" if cart_id else "/cart"
+        return (await self._get(path)).get("cart", {})
+
+    async def checkout(self, confirm_over_limit: bool = False, discount_code: str | None = None,
+                       cart_id: str | None = None) -> dict:
+        body: dict = {}
+        if cart_id:
+            body["cartId"] = cart_id
+        if confirm_over_limit:
+            body["confirmOverLimit"] = True
+        if discount_code:
+            body["discountCode"] = discount_code
         return await self._post("/orders/checkout", body)
+
+    # --- merchant surface (backend enforces the merchant role on all of these) ---
+    async def merchant_get(self, path: str) -> dict:
+        return await self._get(path)
+
+    async def merchant_post(self, path: str, body: dict | None = None) -> dict:
+        return await self._post(path, body)
+
+    async def merchant_put(self, path: str, body: dict) -> dict:
+        r = await _client.put(f"{BACKEND_URL}{path}", headers=self._headers, json=body)
+        try:
+            data = r.json()
+        except Exception:
+            data = {"error": f"HTTP {r.status_code}"}
+        data["_status"] = r.status_code
+        return data
 
     # --- telemetry (fire-and-forget: scheduled, not awaited in the response path) ---
     async def log_model_cost(self, run_id: str, model: str, tokens_in: int, tokens_out: int, cost: float = 0.0) -> None:
@@ -100,4 +159,7 @@ class Tools:
         _schedule(self._fire("/agent/run", {"runId": run_id, "agent": agent, "input": inp, "output": out, "status": status}))
 
     async def remember(self, role: str, content: str) -> None:
-        _schedule(self._fire("/agent/memory", {"role": role, "content": content}))
+        body = {"role": role, "content": content}
+        if self.conversation_id:
+            body["conversationId"] = self.conversation_id
+        _schedule(self._fire("/agent/memory", body))

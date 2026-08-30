@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
+import { I } from '../lib/icons.js';
 
 type Mode = 'login' | 'signup' | 'forgot';
 
@@ -53,8 +54,12 @@ export function Login() {
   );
 
   return (
-    <div className="auth-wrap glass">
-      <div className="title" style={{ marginTop: 0 }}>🛒 Agentic Commerce</div>
+    <div className="sp-auth">
+    <div className="auth-wrap">
+      <div className="sp-auth-brand">
+        <span className="sp-brand-mark">{I.bag()}</span>
+        <span className="sp-brand-name">Agentic Commerce</span>
+      </div>
 
       {mode !== 'forgot' && (
         <>
@@ -108,6 +113,7 @@ export function Login() {
           <p className="muted" style={{ textAlign: 'center', marginTop: 14 }}>{link('login', '← Back to sign in')}</p>
         </>
       )}
+    </div>
     </div>
   );
 }

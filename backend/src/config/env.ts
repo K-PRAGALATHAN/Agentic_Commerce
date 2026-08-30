@@ -17,8 +17,12 @@ export const config = {
   jwt: {
     secret: req('JWT_SECRET', 'dev-secret'),
     refreshSecret: req('JWT_REFRESH_SECRET', 'dev-refresh-secret'),
-    accessTtl: Number(process.env.JWT_ACCESS_TTL ?? 900),
-    refreshTtl: Number(process.env.JWT_REFRESH_TTL ?? 1209600),
+    // 2 hours of active use, renewed silently from the refresh token, which is
+    // good for 30 days. That is the shape most storefronts use: a short-lived
+    // credential on every request, and a long-lived one that quietly renews it,
+    // so nobody is thrown out mid-checkout.
+    accessTtl: Number(process.env.JWT_ACCESS_TTL ?? 7200),      // 2 h
+    refreshTtl: Number(process.env.JWT_REFRESH_TTL ?? 2592000), // 30 d
   },
 
   razorpay: {
@@ -31,8 +35,11 @@ export const config = {
     },
   },
 
-  catalog: {
-    sourceUrl: process.env.CATALOG_SOURCE_URL ?? 'https://dummyjson.com/products?limit=30',
+
+  uploads: {
+    // Product images. Written to a Docker volume so they survive a rebuild.
+    dir: process.env.UPLOAD_DIR ?? '/app/uploads',
+    maxBytes: Number(process.env.UPLOAD_MAX_BYTES ?? 2_000_000), // 2 MB
   },
 
   guardrail: {
@@ -42,6 +49,6 @@ export const config = {
 
   agent: {
     // Agent-service base URL (for anything the backend needs to reach it).
-    url: process.env.AGENT_URL ?? 'http://localhost:8000',
+    url: process.env.AGENT_URL ?? 'http://localhost:8010',
   },
 } as const;

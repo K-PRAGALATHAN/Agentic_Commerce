@@ -44,6 +44,36 @@ export function verifyWebhookSignature(rawBody: string, signature: string): bool
   return safeEqualHex(expected, signature);
 }
 
+// --- Razorpay Route -------------------------------------------------------
+// Route needs to be enabled on the account. Both calls are allowed to throw;
+// application/payouts.ts catches and falls back to ledger-only settlement, so a
+// disabled Route degrades the feature instead of breaking checkout.
+
+export async function createLinkedAccount(email: string, businessName: string): Promise<{ id: string }> {
+  // The accounts API isn't in the SDK's typings; call it as a plain resource.
+  const account: any = await ((rp() as any).accounts.create({
+    email,
+    type: 'route',
+    legal_business_name: businessName,
+    business_type: 'individual',
+    contact_name: businessName,
+    profile: { category: 'ecommerce', subcategory: 'ecommerce', addresses: {} },
+  }));
+  return { id: account.id };
+}
+
+export async function transferToAccount(
+  paymentId: string,
+  accountId: string,
+  amountPaise: number,
+): Promise<{ id: string; status: string }> {
+  const res: any = await (rp() as any).payments.transfer(paymentId, {
+    transfers: [{ account: accountId, amount: amountPaise, currency: 'INR' }],
+  });
+  const t = Array.isArray(res?.items) ? res.items[0] : res;
+  return { id: t?.id, status: t?.status ?? 'processed' };
+}
+
 export async function refund(paymentId: string, amountPaise: number): Promise<{ id: string; status: string }> {
   const r = await rp().payments.refund(paymentId, { amount: amountPaise });
   return { id: r.id, status: r.status };

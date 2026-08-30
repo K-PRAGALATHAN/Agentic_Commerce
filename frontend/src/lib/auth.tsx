@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { user } = await api.get<{ user: User }>('/me');
           setUser(user);
         } catch {
-          setToken(null);
+          setToken(null, null);
         }
       }
       setLoading(false);
@@ -38,8 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
-    const { user, tokens } = await api.post<{ user: User; tokens: { access: string } }>('/auth/login', { email, password });
-    setToken(tokens.access);
+    const { user, tokens } = await api.post<{ user: User; tokens: { access: string; refresh: string } }>('/auth/login', { email, password });
+    setToken(tokens.access, tokens.refresh);
     setUser(user);
   }
 
@@ -49,7 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
-    setToken(null);
+    // Fire-and-forget: the local session ends either way, but the server should
+    // stop honouring the refresh token too.
+    api.post('/auth/logout').catch(() => {});
+    setToken(null, null);
     setUser(null);
   }
 
