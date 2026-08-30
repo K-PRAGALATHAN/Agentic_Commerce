@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, apiUpload, rupees } from '../lib/api.js';
 import { I } from '../lib/icons.js';
 
@@ -11,6 +11,11 @@ interface Refund { id: string; order_id: string; amount_paise: number; reason: s
 interface Cost { totalCalls: number; totalCost: number; byModel: any[]; }
 interface WikiEntry { key: string; title: string; content: string; }
 interface VariantRow { id?: string; title: string; priceRupees: string; stock: string; sku: string; }
+interface StoreForm {
+  storeName: string; tagline: string; about: string; logo: string; location: string; slug?: string;
+}
+const EMPTY_STORE: StoreForm = { storeName: '', tagline: '', about: '', logo: '', location: '' };
+
 interface Payouts {
   account: { status: string; detail: string; razorpayAccountId: string | null } | null;
   balance: { totalPaise: number; settledPaise: number; pendingPaise: number; mode: string };
@@ -34,6 +39,7 @@ function Thumb({ src, name }: { src?: string; name: string }) {
 }
 
 export function Merchant() {
+  const nav = useNavigate();
   const [params] = useSearchParams();
   const q = (params.get('q') ?? '').trim().toLowerCase(); // top-bar search
   const [products, setProducts] = useState<Product[]>([]);
@@ -54,6 +60,10 @@ export function Merchant() {
   // product to real variants, and price/stock then live on the rows.
   const [variants, setVariants] = useState<VariantRow[]>([]);
   const [payouts, setPayouts] = useState<Payouts | null>(null);
+  // The shopfront: the name a customer sees under every product this store sells.
+  const [store, setStore] = useState<StoreForm>(EMPTY_STORE);
+  const [storeSaving, setStoreSaving] = useState(false);
+  const [storeMsg, setStoreMsg] = useState('');
   const [linking, setLinking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -74,12 +84,24 @@ export function Merchant() {
       setCost(await api.get<Cost>('/merchant/model-cost'));
       setWiki((await api.get<{ wiki: WikiEntry[] }>('/wiki')).wiki);
       setPayouts(await api.get<Payouts>('/merchant/payouts'));
+      const st = await api.get<{ store: StoreForm | null }>('/merchant/store');
+      if (st.store) setStore({ ...EMPTY_STORE, ...st.store });
     } catch { /* secondary panels are non-fatal */ }
   }
   useEffect(() => { load(); }, []);
 
   // --- product editor -------------------------------------------------------
   function openCreate() { setForm(EMPTY); setVariants([]); setUploadErr(''); setEditor({ mode: 'create' }); }
+
+  async function saveStore() {
+    setStoreSaving(true); setStoreMsg('');
+    try {
+      const r = await api.put<{ store: StoreForm }>('/merchant/store', store);
+      setStore({ ...EMPTY_STORE, ...r.store });
+      setStoreMsg('Saved — customers see this name on every product you sell.');
+      setTimeout(() => setStoreMsg(''), 2600);
+    } catch (e: any) { setStoreMsg(e.message); } finally { setStoreSaving(false); }
+  }
 
   async function linkPayouts() {
     setLinking(true);
@@ -206,7 +228,7 @@ export function Merchant() {
         </div>
         <div className="row">
           <button className="ghost" onClick={rebuildKG}>Rebuild graph</button>
-          <button onClick={openCreate}>+ Add product</button>
+          <button className="btn-brand" onClick={openCreate}>+ Add product</button>
         </div>
       </div>
 
@@ -218,7 +240,7 @@ export function Merchant() {
               ? 'Try a different search term.'
               : 'Products you create appear in the storefront and become buyable by the assistant.'}
           </p>
-          {!q && <button onClick={openCreate}>+ Add product</button>}
+          {!q && <button className="btn-brand" onClick={openCreate}>+ Add product</button>}
         </div>
       ) : (
         <div className="glass mp-tablewrap">
@@ -253,6 +275,7 @@ export function Merchant() {
                       </span>
                     ) : (
                       <span className="row">
+                        <button className="ghost" onClick={() => nav(`/product/${p.id}`)}>View</button>
                         <button className="ghost" onClick={() => openEdit(p)}>Edit</button>
                         <button className="danger" onClick={() => setConfirmDel(p.id)}>Delete</button>
                       </span>
@@ -284,6 +307,47 @@ export function Merchant() {
           </div>
         </div>
       ))}
+
+      {/* ---------- Shopfront ----------
+          Several merchants share this catalogue, so a product with no store
+          behind it is an anonymous listing. This is where that name is set. */}
+      <div className="title" style={{ fontSize: 16 }}>Your shopfront</div>
+      <div className="list-row glass">
+        <div className="mp-store-grid">
+          <div>
+            <label>Store name</label>
+            <input value={store.storeName} placeholder="Nova Tech"
+              onChange={(e) => setStore({ ...store, storeName: e.target.value })} />
+          </div>
+          <div>
+            <label>Icon</label>
+            <input value={store.logo} placeholder="Emoji, e.g. ⚡" maxLength={4}
+              onChange={(e) => setStore({ ...store, logo: e.target.value })} />
+          </div>
+          <div>
+            <label>Location</label>
+            <input value={store.location} placeholder="Bengaluru"
+              onChange={(e) => setStore({ ...store, location: e.target.value })} />
+          </div>
+        </div>
+        <label>Tagline</label>
+        <input value={store.tagline} placeholder="What you sell, in one line"
+          onChange={(e) => setStore({ ...store, tagline: e.target.value })} />
+        <label>About</label>
+        <textarea rows={2} value={store.about} placeholder="A short paragraph shown on your store page."
+          onChange={(e) => setStore({ ...store, about: e.target.value })} />
+        <div className="row between">
+          <span className="muted" style={{ fontSize: 12 }}>
+            {store.slug ? <>Your page: <code>/stores/{store.slug}</code></> : 'Save to publish your store page.'}
+          </span>
+          <div className="row">
+            {storeMsg && <span className="muted" style={{ fontSize: 12 }}>{storeMsg}</span>}
+            <button className="btn-brand" disabled={storeSaving || !store.storeName.trim()} onClick={saveStore}>
+              {storeSaving ? 'Saving…' : 'Save shopfront'}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* ---------- Payouts ---------- */}
       <div className="title" style={{ fontSize: 16 }}>Payouts</div>

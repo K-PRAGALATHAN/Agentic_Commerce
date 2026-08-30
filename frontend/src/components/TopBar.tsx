@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
 import { I } from '../lib/icons.js';
+import avatarUrl from '../assets/avatar.png';
 import type { PanelKind } from './SidePanel.js';
 
 interface Props {
@@ -40,12 +41,11 @@ export function TopBar({ chatOpen, panel, onToggleChat, onTogglePanel }: Props) 
   }
 
   const name = (user?.email ?? '').split('@')[0] || 'Guest';
-  const initials = name.slice(0, 2).toUpperCase();
 
   return (
     <header className="sp-topbar">
       <div className="sp-brand" onClick={() => nav(homePath)}>
-        <span className="sp-brand-mark">{I.bag()}</span>
+        <span className="sp-brand-mark">{I.logo()}</span>
         <span className="sp-brand-name">Agentic</span>
       </div>
 
@@ -88,7 +88,9 @@ export function TopBar({ chatOpen, panel, onToggleChat, onTogglePanel }: Props) 
           aria-pressed={panel === 'account'}
           title={user?.email}
         >
-          <span className="sp-store-av">{initials}</span>
+          {/* One rendered avatar for everybody. Initials read as a placeholder
+              waiting to be replaced; a face reads as an account. */}
+          <img className="sp-store-av" src={avatarUrl} alt="" />
           <span className="sp-store-name">{name}</span>
         </button>
       </div>

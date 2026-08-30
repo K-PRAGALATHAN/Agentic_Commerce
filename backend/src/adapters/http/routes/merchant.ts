@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { myStore, upsertStore } from '../../../application/merchants.js';
 import { z } from 'zod';
 import { createProduct, updateProduct, deleteProduct, listOwnProducts, listInventory, adjustInventory } from '../../../application/catalog.js';
 import { listRefundRequests, approveRefund, rejectRefund } from '../../../application/refunds.js';
@@ -24,7 +25,19 @@ import { HttpError } from '../../../application/auth.js';
 // (Applied per-route: routers share the '/' mount, so router.use would leak the
 //  role check onto every router registered after this one.)
 export const merchantRouter = Router();
+
 const merchantOnly = [requireAuth, requireRole('merchant', 'admin')] as const;
+
+// The merchant's own shopfront. This is the name customers see on every card
+// they sell, so it is edited here rather than buried in settings.
+merchantRouter.get('/merchant/store', ...merchantOnly, asyncHandler(async (req, res) => {
+  res.json({ store: await myStore(req.user!.sub) });
+}));
+merchantRouter.put('/merchant/store', ...merchantOnly, asyncHandler(async (req, res) => {
+  await upsertStore(req.user!.sub, req.body ?? {});
+  res.json({ store: await myStore(req.user!.sub) });
+}));
+
 
 const variantInput = z.object({
   id: z.string().uuid().optional(),

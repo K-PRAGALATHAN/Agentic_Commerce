@@ -43,6 +43,10 @@ export interface ProductOption {
 export interface Product {
   id: string;
   merchantId: string | null; // owning merchant
+  // Who the customer is buying FROM. Denormalised onto every product read
+  // because the seller belongs next to the price, not one request away.
+  sellerName?: string;
+  sellerSlug?: string;
   name: string;
   description: string;
   pricePaise: Paise;   // display rollup: lowest variant price

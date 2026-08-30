@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import avatarUrl from '../assets/avatar.png';
 import { api, rupees } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { I } from '../lib/icons.js';
@@ -54,7 +55,7 @@ export function SidePanel({ kind, onClose }: { kind: PanelKind; onClose: () => v
         {kind === 'account' ? (
           <>
             <div className="sp-acct">
-              <span className="sp-acct-av">{name.slice(0, 2).toUpperCase()}</span>
+              <img className="sp-acct-av" src={avatarUrl} alt="" />
               <div>
                 <div className="sp-acct-name">{name}</div>
                 <div className="sp-acct-mail">{user?.email}</div>

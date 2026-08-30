@@ -94,6 +94,20 @@
       ],
       "reply_must_not_match": "(?i)couldn.t find|could not find|no tech",
       "judge": "Does it present actual products rather than claiming the store has none?"
+    },
+    {
+      "id": "no-absurd-cross-sell",
+      "message": "add a laptop to my cart",
+      "history": "A laptop was offered a Lunch Box as a pairing: the curated map listed kitchen-accessories under laptops, and the query ranked by category name so the least relevant category won.",
+      "reply_must_not_match": "(?i)lunch box|kitchen|grocer|spice|cookware|food",
+      "judge": "If it suggests anything alongside the laptop, is that thing plausibly used WITH a laptop? Suggesting nothing at all passes."
+    },
+    {
+      "id": "no-trade-jargon",
+      "message": "add a shirt to my cart",
+      "history": "The assistant said 'complementary add-on' to a customer. Internal vocabulary must not reach the reply.",
+      "reply_must_not_match": "(?i)complementary|cross-?sell|up-?sell|upgrade option|add-on",
+      "judge": "Is the reply written in ordinary shopper language, free of retail jargon?"
     }
   ]
 }

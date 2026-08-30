@@ -68,11 +68,13 @@ export function Sidebar({ cartCount, chatOpen, onNavigate, onOpenConvo, onNewCon
             {item('customers', 'Customers', '/merchant/customers')}
             {item('discount', 'Discounts', '/merchant/discounts')}
             {item('audit', 'Analytics', '/analytics')}
+            {item('shop', 'Marketplace', '/stores')}
             {item('ledger', 'Audit trail', '/audit')}
           </>
         ) : (
           <>
             {item('home', 'Home', '/')}
+            {item('shop', 'Stores', '/stores')}
             {item('orders', 'Orders', '/orders')}
             {item('cart', 'Cart', '/cart', cartCount)}
             {item('audit', 'Analytics', '/audit')}

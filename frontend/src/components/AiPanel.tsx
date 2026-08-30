@@ -3,9 +3,17 @@ import { agentChat, api, rupees } from '../lib/api.js';
 import { runCheckout, payExistingOrder } from '../lib/checkout.js';
 import { useAuth } from '../lib/auth.js';
 import { I } from '../lib/icons.js';
+import { ProductCard, type CardProduct } from './ProductCard.js';
+import {
+  listen, speak, stopSpeaking, voiceSupported, speechSupported,
+  normaliseNumbers, isRisky, isConsent, type ListenHandle,
+} from '../lib/voice.js';
 import { listConvos, newConvo, upsertConvo, removeConvo, exists, onConversationsChanged, type Convo } from '../lib/conversations.js';
 
-interface Prod { id: string; name: string; pricePaise: number; image?: string; rating?: number; category?: string; description?: string; }
+// The chat's product shape is the card's shape. It was a near-copy with every
+// field optional, which is how the two drifted apart in the first place — and
+// why handing one to the rail needed a cast rather than just working.
+interface Prod extends CardProduct { description?: string; }
 interface Step { tool: string; args?: any; ms?: number; ok?: boolean }
 interface Msg { role: 'user' | 'assistant'; text: string; kind?: string; data?: any; steps?: Step[]; }
 
@@ -16,6 +24,9 @@ interface Props {
   onClose: () => void;
   onCartChanged: () => void;
   notify: (text: string) => void;
+  // Opening a product is the shell's job, not the chat's: it goes to the right
+  // rail so the conversation that produced it stays on screen.
+  onOpenProduct: (p: Prod) => void;
 }
 
 // The shopping assistant. It takes over the centre content area, replacing the
@@ -46,7 +57,7 @@ function Decision({ steps }: { steps: Step[] }) {
   );
 }
 
-export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, onCartChanged, notify }: Props) {
+export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, onCartChanged, notify, onOpenProduct }: Props) {
   const { user } = useAuth();
   const uid = user?.id ?? 'anon';
 
@@ -55,7 +66,17 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuVersion, setMenuVersion] = useState(0);
-  const [detail, setDetail] = useState<Prod | null>(null);
+
+  // --- voice ---------------------------------------------------------------
+  // Speech is a transport in front of the same agent, so it drives `ask()`
+  // rather than owning a loop of its own. The state here is only about the
+  // microphone: what is being heard, and what is waiting to be confirmed.
+  const [micOn, setMicOn] = useState(false);
+  const [heard, setHeard] = useState('');          // live partial transcript
+  const [speaking, setSpeaking] = useState(false);
+  const [voiceOut, setVoiceOut] = useState(true);  // read replies aloud
+  const [pending, setPending] = useState<string | null>(null); // awaiting read-back
+  const micRef = useRef<ListenHandle | null>(null);
   const [qty, setQty] = useState(1);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +105,6 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
       onConvoChange(next.id);
       return next;
     });
-    setDetail(null);
   }), [uid, isMerchant, onConvoChange]);
 
   function updateConvo(fn: (c: Convo) => Convo) {
@@ -97,9 +117,9 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
   }
   const push = (m: Msg) => updateConvo((c) => ({ ...c, msgs: [...c.msgs, m], updatedAt: Date.now() }));
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
+  // The single path into the agent. Typing and speaking both end up here, which
+  // is what keeps voice from becoming a second assistant with its own rules.
+  async function ask(text: string, spoken = false) {
     if (!text || busy) return;
     updateConvo((c) => ({
       ...c,
@@ -107,15 +127,70 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
       msgs: [...c.msgs, { role: 'user', text }],
       updatedAt: Date.now(),
     }));
-    setInput(''); setBusy(true); setDetail(null);
+    setInput(''); setBusy(true); setHeard('');
     try {
       const r = await agentChat(text, convo?.id);
       push({ role: 'assistant', text: r.reply, kind: r.kind, data: r.data, steps: (r as any).steps });
       onCartChanged();
+      if (spoken && voiceOut) {
+        // A gated turn is the one reply that must not end on an open question.
+        // Read aloud as-is, "that is over your spend limit, shall I go ahead?"
+        // invites a spoken yes — and consent to overspend is the single thing
+        // voice is not allowed to give, because a cough in a noisy room is the
+        // weakest evidence of intent in the system. The spoken version says so
+        // and stops; the button on screen is the only way through.
+        const line = r.kind === 'gated'
+          ? `${r.reply} You will need to confirm that on screen — I cannot take that one by voice.`
+          : r.reply;
+        setSpeaking(true);
+        speak(line, () => setSpeaking(false));
+      }
     } catch (e: any) {
       push({ role: 'assistant', text: `Something went wrong: ${e.message}`, kind: 'error' });
     } finally { setBusy(false); }
   }
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    await ask(input.trim());
+  }
+
+  // Anything that names a quantity, a price or a payment gets repeated back
+  // before it is acted on, and so does anything the recogniser was unsure of.
+  // A misheard "seven hundred" as "seven thousand" is a real charge.
+  function handleHeard(text: string, confidence: number) {
+    const normalised = normaliseNumbers(text);
+    if (!normalised) return;
+    if (isConsent(normalised) || isRisky(normalised) || confidence < 0.75) {
+      setPending(normalised);
+      if (voiceOut) {
+        setSpeaking(true);
+        speak(`I heard: ${normalised}. Shall I go ahead?`, () => setSpeaking(false));
+      }
+      return;
+    }
+    void ask(normalised, true);
+  }
+
+  function startMic() {
+    stopSpeaking(); setSpeaking(false);   // barge-in: talking over it stops it
+    setHeard(''); setPending(null);
+    const h = listen({
+      onPartial: setHeard,
+      onFinal: ({ text, confidence }) => { setMicOn(false); handleHeard(text, confidence); },
+      onError: (msg) => { setMicOn(false); setHeard(''); notify(msg); },
+      onEnd: () => setMicOn(false),
+    });
+    if (!h) { notify('Voice needs Chrome or Edge on this machine.'); return; }
+    micRef.current = h;
+    setMicOn(true);
+  }
+
+  function stopMic() { micRef.current?.abort(); micRef.current = null; setMicOn(false); setHeard(''); }
+
+  // Leaving the panel with the microphone live, or with a reply still being
+  // read out, is the kind of thing people notice about an app once.
+  useEffect(() => () => { micRef.current?.abort(); stopSpeaking(); }, []);
 
   async function addToCart(p: Prod, q = 1) {
     try { await api.post('/cart/items', { productId: p.id, qty: q }); notify(`Added “${p.name}” to cart`); onCartChanged(); }
@@ -132,7 +207,6 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
     });
   }
 
-  async function buyNow(p: Prod, q = 1) { await addToCart(p, q); setDetail(null); await pay(false); }
 
   // Pays the order the agent already created after "confirm" — reusing it instead
   // of calling checkout again, which would create a second order for the same cart.
@@ -143,7 +217,7 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
   function startNew() {
     const c = newConvo(uid, isMerchant);
     upsertConvo(uid, c);
-    setConvo(c); onConvoChange(c.id); setDetail(null); setMenuOpen(false);
+    setConvo(c); onConvoChange(c.id); setMenuOpen(false);
   }
 
   // Deleting the open conversation drops you into whatever remains, or a fresh
@@ -159,8 +233,7 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
       if (!left.length) upsertConvo(uid, next);
       setConvo(next);
       onConvoChange(next.id);
-      setDetail(null);
-    }
+      }
     setMenuVersion((v) => v + 1);
   }
 
@@ -181,7 +254,7 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
               <div style={{ fontWeight: 600 }} onClick={startNew}>+ New conversation</div>
               {list.map((c) => (
                 <div key={c.id} className="sp-rail-drop-row" title={c.title}>
-                  <span onClick={() => { onConvoChange(c.id); setMenuOpen(false); setDetail(null); }}>{c.title}</span>
+                  <span onClick={() => { onConvoChange(c.id); setMenuOpen(false); }}>{c.title}</span>
                   <button
                     className="sp-rail-del"
                     title={`Delete "${c.title}"`}
@@ -200,29 +273,6 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
           title={isMerchant ? 'Back to Products' : 'Back to storefront'} aria-label="Close assistant">{I.close()}</button>
       </div>
 
-      {detail ? (
-        <div className="sp-chat-scroll">
-          <div className="sp-chat-inner sp-detail">
-            <button className="sp-detail-back" onClick={() => setDetail(null)}>{I.back()} Back to chat</button>
-            {detail.image
-              ? <img className="sp-detail-img" src={detail.image} alt="" />
-              : <div className="sp-detail-img" />}
-            <div className="sp-detail-cat">{detail.category}</div>
-            <div className="sp-detail-name">{detail.name}</div>
-            <div className="sp-detail-price">{rupees(detail.pricePaise)}</div>
-            <p className="sp-detail-desc">{detail.description || 'A pick from the store catalogue.'}</p>
-            <div className="sp-detail-actions">
-              <div className="sp-qty">
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">−</button>
-                <span>{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} aria-label="Increase">+</button>
-              </div>
-              <button className="ghost" onClick={() => { addToCart(detail, qty); setDetail(null); }}>Add to cart</button>
-              <button onClick={() => buyNow(detail, qty)}>Buy now</button>
-            </div>
-          </div>
-        </div>
-      ) : (
         <div className="sp-chat-scroll">
           <div className="sp-chat-inner">
             {msgs.map((m, i) => m.role === 'user' ? (
@@ -238,19 +288,19 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
                 {m.data?.options?.length > 0 && (
                   <>
                     <div className="sp-msg-step">{I.check()} Found {m.data.options.length} matching product(s)</div>
-                    <div className="sp-results">
+                    <div className="sp-results pc-grid">
+                      {/* The same card as the storefront. A product shown in the
+                          chat and the same product shown on the home page were two
+                          different components, so the discount flag, the rating and
+                          the seller only ever appeared in one of them. */}
                       {m.data.options.map((p: Prod) => (
-                        <div key={p.id} className="sp-res" onClick={() => { setDetail(p); setQty(1); }}>
-                          {p.image ? <img className="sp-res-img" src={p.image} alt="" /> : <div className="sp-res-img" />}
-                          <div className="sp-res-body">
-                            <div className="sp-res-name">{p.name}</div>
-                            <div className="sp-res-meta">
-                              <span className="sp-res-price">{rupees(p.pricePaise)}</span>
-                              {p.rating ? <span>★ {Number(p.rating).toFixed(1)}</span> : null}
-                            </div>
-                          </div>
-                          <button className="sp-res-add" onClick={(e) => { e.stopPropagation(); addToCart(p); }}>Add</button>
-                        </div>
+                        <ProductCard
+                          key={p.id}
+                          p={p}
+                          onAdd={(x) => addToCart(x as Prod)}
+                          onNotify={notify}
+                          onOpen={() => onOpenProduct(p)}
+                        />
                       ))}
                     </div>
                   </>
@@ -289,20 +339,84 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
             <div ref={endRef} />
           </div>
         </div>
+      {/* --- voice ------------------------------------------------------
+          The read-back. Anything with a number, a price or a payment word in
+          it is repeated before it is sent, so a misheard amount is caught by
+          the customer rather than by their bank statement. */}
+      {pending && (
+        <div className="vc-check">
+          <div>
+            <span>I heard</span>
+            <b>“{pending}”</b>
+          </div>
+          <div className="vc-check-acts">
+            <button className="ghost" onClick={() => { setPending(null); startMic(); }}>Say it again</button>
+            <button className="pd-add" onClick={() => { const t = pending; setPending(null); void ask(t, true); }}>
+              Yes, go ahead
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="sp-composer">
+        {micOn && (
+          <div className="vc-live">
+            <span className="vc-wave"><i /><i /><i /><i /></span>
+            <span>{heard || 'Listening…'}</span>
+            <button onClick={stopMic}>Stop</button>
+          </div>
+        )}
+
         <form onSubmit={send}>
           <span className="ai-dot">{I.sparkle()}</span>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isMerchant ? "Ask about your store…" : "Ask anything…"}
-            disabled={busy}
+            placeholder={micOn ? 'Listening…' : isMerchant ? 'Ask about your store…' : 'Ask anything…'}
+            disabled={busy || micOn}
             aria-label="Message the assistant"
           />
+
+          {voiceSupported() && (
+            <button
+              type="button"
+              className={`vc-mic ${micOn ? 'on' : ''}`}
+              onClick={() => (micOn ? stopMic() : startMic())}
+              disabled={busy}
+              title={micOn ? 'Stop listening' : 'Speak to the assistant'}
+              aria-label={micOn ? 'Stop listening' : 'Speak to the assistant'}
+              aria-pressed={micOn}
+            >
+              {I.mic()}
+            </button>
+          )}
+
+          {speechSupported() && (
+            <button
+              type="button"
+              className={`vc-spk ${voiceOut ? 'on' : ''}`}
+              onClick={() => {
+                setVoiceOut((v) => {
+                  if (v) { stopSpeaking(); setSpeaking(false); }
+                  return !v;
+                });
+              }}
+              title={voiceOut ? 'Replies are read aloud' : 'Replies are silent'}
+              aria-label="Toggle spoken replies"
+              aria-pressed={voiceOut}
+            >
+              {speaking ? I.speakerOn() : voiceOut ? I.speaker() : I.speakerOff()}
+            </button>
+          )}
+
           <button className="sp-send" disabled={busy || !input.trim()} aria-label="Send">{I.send()}</button>
         </form>
+
+        {speaking && (
+          <button className="vc-hush" onClick={() => { stopSpeaking(); setSpeaking(false); }}>
+            Stop speaking
+          </button>
+        )}
       </div>
     </section>
   );

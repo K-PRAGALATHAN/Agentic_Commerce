@@ -13,12 +13,15 @@ import { MerchantCustomers } from './pages/merchant/Customers.js';
 import { MerchantDiscounts } from './pages/merchant/Discounts.js';
 import { MerchantAnalytics } from './pages/merchant/Analytics.js';
 import { Observability } from './pages/Observability.js';
+import { Stores, StorePage } from './pages/Stores.js';
+import { Product } from './pages/Product.js';
 
 const TITLES: Record<string, string> = {
   '/': 'Home', '/cart': 'Cart', '/orders': 'Orders', '/merchant': 'Products',
   '/merchant/collections': 'Collections', '/merchant/inventory': 'Inventory',
   '/merchant/customers': 'Customers', '/merchant/discounts': 'Discounts',
   '/analytics': 'Analytics', '/audit': 'Audit trail', '/settings': 'Settings',
+  '/stores': 'Stores',
 };
 
 export function App() {
@@ -36,6 +39,13 @@ export function App() {
     <AppShell title={TITLES[location.pathname] ?? 'Agentic Commerce'}>
       <Routes>
         <Route path="/orders" element={<Orders />} />
+        {/* Who sells here is public: a merchant checks the competition on the
+            same page a customer uses to choose a shop. */}
+        <Route path="/stores" element={<Stores />} />
+        <Route path="/stores/:slug" element={<StorePage />} />
+        {/* A merchant needs to see a product exactly as a customer does — it is
+            the only honest preview of their own listing. */}
+        <Route path="/product/:id" element={<Product />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/audit" element={<Observability />} />
         {isMerchant ? (

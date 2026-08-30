@@ -1,0 +1,173 @@
+/* ============================================================
+   BRAND — a warm retail palette over the same shell.
+
+   The layout does not move: top bar, left rail and centre panel keep their
+   geometry. Only colour and the storefront surfaces change, so every admin
+   screen inherits the new palette without being rewritten.
+
+   Loaded after styles.css (see main.tsx), so ties here win.
+   ============================================================ */
+:root {
+  --brand: #e8552d;
+  --brand-2: #ff8a4c;
+  --brand-ink: #b83f1b;
+  --brand-soft: #fff2ed;
+  --brand-tint: #fdf6f3;
+  --ink: #16181d;
+  --ink-2: #3c4149;
+
+  /* One repoint carries the accent through every page written before this. */
+  --accent: var(--brand);
+}
+
+button { background: var(--ink); border-color: var(--ink); }
+button:hover:not(:where(:disabled)) { background: #000; }
+button.primary, .btn-brand { background: var(--brand); border-color: var(--brand); color: #fff; }
+button.primary:hover:not(:where(:disabled)),
+.btn-brand:hover:not(:where(:disabled)) { background: var(--brand-ink); border-color: var(--brand-ink); }
+.sp-nav-item.active { box-shadow: inset 2px 0 0 var(--brand), var(--sp-shadow-sm); }
+.sp-nav-item.active svg { color: var(--brand); }
+.price { color: var(--ink); }
+
+/* ============================================================
+   HOME — a landing page, not a bare grid
+   ============================================================ */
+.hm-hero {
+  display: grid; grid-template-columns: 1.05fr .95fr; gap: 24px; align-items: center;
+  padding: 34px 36px; margin-bottom: 18px; border-radius: var(--r-lg);
+  background: linear-gradient(115deg, var(--brand-tint) 0%, #fff6f0 42%, #ffe9dd 100%);
+  border: 1px solid #f6e0d6;
+}
+.hm-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+  letter-spacing: .8px; text-transform: uppercase; color: var(--brand-ink);
+}
+.hm-hero h1 {
+  margin: 10px 0 8px; font-size: 34px; line-height: 1.14; letter-spacing: -.9px;
+  font-weight: 700; color: var(--ink); max-width: 15ch;
+}
+.hm-hero h1 em { font-style: normal; color: var(--brand); }
+.hm-hero-copy > p { margin: 0 0 18px; font-size: 13.5px; color: var(--ink-2); max-width: 46ch; }
+.hm-hero-cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.hm-hero-note { margin-top: 18px; font-size: 12px; color: var(--sp-muted); }
+.hm-hero-note b { color: var(--ink); }
+
+/* The floating product chips from the reference layouts, filled from real
+   catalogue rows — the hero is never a mock-up of a store that does not exist. */
+.hm-stage { position: relative; min-height: 260px; }
+.hm-stage-bg {
+  position: absolute; inset: 12% 8% 8% 8%; border-radius: 200px 200px 24px 24px;
+  background: linear-gradient(160deg, var(--brand) 0%, #ff9a63 100%); opacity: .92;
+}
+.hm-chip {
+  position: absolute; display: flex; align-items: center; gap: 9px; padding: 8px 12px 8px 8px;
+  background: #fff; border: 1px solid var(--sp-border); border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(22, 24, 29, .13); width: 178px; cursor: pointer; text-align: left;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.hm-chip:hover:not(:where(:disabled)) {
+  background: #fff; transform: translateY(-2px); box-shadow: 0 12px 26px rgba(22, 24, 29, .18);
+}
+.hm-chip img { width: 38px; height: 38px; object-fit: cover; border-radius: 8px; background: var(--sp-bg); }
+.hm-chip b {
+  display: block; font-size: 11.5px; font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hm-chip i { font-style: normal; font-size: 11px; color: var(--brand-ink); font-weight: 650; }
+.hm-chip.a { top: 4%; right: 2%; }
+.hm-chip.b { top: 42%; left: -4%; }
+.hm-chip.c { bottom: 2%; right: 8%; }
+
+.hm-trust {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-bottom: 26px;
+  background: var(--sp-border); border: 1px solid var(--sp-border);
+}
+.hm-trust div { background: #fff; padding: 14px 16px; }
+.hm-trust b { display: block; font-size: 12.5px; color: var(--ink); }
+.hm-trust span { font-size: 11.5px; color: var(--sp-muted); }
+
+.hm-sec { margin-bottom: 28px; }
+.hm-sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.hm-sec-head h2 { margin: 0; font-size: 16px; font-weight: 680; letter-spacing: -.3px; color: var(--ink); }
+.hm-sec-head p { margin: 2px 0 0; font-size: 12px; color: var(--sp-muted); }
+.hm-link {
+  background: none; border: 0; padding: 0; color: var(--brand-ink);
+  font-weight: 650; font-size: 12.5px; cursor: pointer;
+}
+.hm-link:hover:not(:where(:disabled)) { background: none; color: var(--brand); text-decoration: underline; }
+
+.hm-cats { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; }
+.hm-cat {
+  flex: 0 0 auto; width: 96px; background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.hm-cat .ring {
+  width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 27px; background: var(--brand-soft); border: 1px solid #f6ded4;
+  transition: transform .14s ease, background .14s ease;
+}
+.hm-cat:hover:not(:where(:disabled)) { background: none; }
+.hm-cat:hover .ring { transform: translateY(-3px); background: #ffe4d8; }
+.hm-cat span {
+  font-size: 11.5px; font-weight: 600; color: var(--ink-2); text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px;
+}
+
+.hm-deal {
+  display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center;
+  padding: 22px 26px; margin-bottom: 28px; border-radius: var(--r-lg);
+  background: linear-gradient(100deg, var(--ink) 0%, #2b2f38 100%); color: #fff;
+}
+.hm-deal h3 { margin: 0 0 5px; font-size: 19px; font-weight: 680; letter-spacing: -.3px; }
+.hm-deal h3 em { font-style: normal; color: var(--brand-2); }
+.hm-deal p { margin: 0; font-size: 12.5px; color: rgba(255,255,255,.72); max-width: 60ch; }
+
+/* ============================================================
+   WHO YOU ARE BUYING FROM
+   ============================================================ */
+.sf-seller {
+  display: block; font-size: 11px; color: var(--sp-muted); margin: 2px 0 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sf-seller b { color: var(--brand-ink); font-weight: 600; }
+
+.st-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 14px; }
+.st-card {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px; cursor: pointer;
+  background: #fff; border: 1px solid var(--sp-border); box-shadow: var(--sp-shadow-sm);
+  border-radius: var(--r-lg); text-align: left; color: inherit;
+}
+.st-card:hover:not(:where(:disabled)) {
+  background: #fff; border-color: var(--sp-border-strong); box-shadow: var(--sp-shadow-card);
+}
+.st-top { display: flex; align-items: center; gap: 11px; }
+.st-logo {
+  width: 44px; height: 44px; display: grid; place-items: center; font-size: 22px;
+  border-radius: 12px; background: var(--brand-soft); flex: 0 0 44px;
+}
+.st-top b { display: block; font-size: 14px; font-weight: 650; color: var(--ink); }
+.st-top span { font-size: 11.5px; color: var(--sp-muted); }
+.st-tag { font-size: 12px; color: var(--ink-2); min-height: 32px; }
+.st-stats { display: flex; gap: 16px; padding-top: 10px; border-top: 1px solid var(--sp-border); }
+.st-stats div b { display: block; font-size: 13.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.st-stats div span { font-size: 11px; color: var(--sp-faint); text-transform: uppercase; letter-spacing: .4px; }
+
+.st-hero {
+  display: flex; align-items: center; gap: 16px; padding: 22px 24px; margin-bottom: 20px;
+  border-radius: var(--r-lg); background: linear-gradient(110deg, var(--brand-tint), #fff);
+  border: 1px solid #f4ddd3;
+}
+.st-hero .st-logo { width: 60px; height: 60px; flex: 0 0 60px; font-size: 30px; background: #fff; }
+.st-hero h1 { margin: 0 0 3px; font-size: 22px; font-weight: 700; letter-spacing: -.4px; color: var(--ink); }
+.st-hero p { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 70ch; }
+.st-hero .st-stats { border: 0; padding: 0; margin-left: auto; }
+
+@media (max-width: 1000px) {
+  .hm-hero { grid-template-columns: 1fr; }
+  .hm-stage { display: none; }
+  .hm-trust { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* merchant shopfront editor */
+.mp-store-grid { display: grid; grid-template-columns: 2fr 80px 1fr; gap: 12px; }
+@media (max-width: 760px) { .mp-store-grid { grid-template-columns: 1fr; } }

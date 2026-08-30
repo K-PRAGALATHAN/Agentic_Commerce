@@ -5,7 +5,11 @@
 
 ## 0. Setup (before the audience)
 - Open http://localhost:5173.
-- Have two accounts ready: a **merchant** and a **customer**.
+- Credentials are in **[ACCOUNTS.md](ACCOUNTS.md)** — four stores and three
+  customers, all on the password `demo1234`. The login screen also has one-click
+  buttons for a customer and a merchant, so nothing needs typing on stage.
+- Use `riya@demo.shop` for the customer half and `nova@demo.store` for the
+  merchant half.
 
 ## 1. Merchant makes the store sellable (30s)
 1. Log in as **merchant** → **Merchant** tab.

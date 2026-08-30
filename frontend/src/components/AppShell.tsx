@@ -5,6 +5,8 @@ import { TopBar } from './TopBar.js';
 import { Sidebar } from './Sidebar.js';
 import { AiPanel } from './AiPanel.js';
 import { SidePanel, type PanelKind } from './SidePanel.js';
+import { ProductPanel } from './ProductPanel.js';
+import type { CardProduct } from './ProductCard.js';
 import { newConvo, upsertConvo } from '../lib/conversations.js';
 import { cartsChanged } from '../lib/cartEvents.js';
 import { useAuth } from '../lib/auth.js';
@@ -21,6 +23,10 @@ export function AppShell({ children }: { title?: string; children: ReactNode }) 
   const [cartCount, setCartCount] = useState(0);
   const [chatOpen, setChatOpen] = useState(loc.pathname === '/chat');
   const [panel, setPanel] = useState<PanelKind | null>(null);
+  // A product opened from the assistant. It shares the right rail with account
+  // and activity — only one of the three can be showing, which is what keeps
+  // the shell to two surfaces rather than three.
+  const [product, setProduct] = useState<CardProduct | null>(null);
   const [convoId, setConvoId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
 
@@ -84,13 +90,23 @@ export function AppShell({ children }: { title?: string; children: ReactNode }) 
               onClose={leaveChat}
               onCartChanged={refreshCart}
               notify={notify}
+              onOpenProduct={(p) => { setPanel(null); setProduct(p); }}
             />
           ) : (
             <div className="sp-page">{children}</div>
           )}
         </main>
 
-        {panel && <SidePanel kind={panel} onClose={() => setPanel(null)} />}
+        {product ? (
+          <ProductPanel
+            product={product}
+            onClose={() => setProduct(null)}
+            onCartChanged={refreshCart}
+            notify={notify}
+          />
+        ) : panel ? (
+          <SidePanel kind={panel} onClose={() => setPanel(null)} />
+        ) : null}
       </div>
 
       {toast && <div className="toast">{toast}</div>}

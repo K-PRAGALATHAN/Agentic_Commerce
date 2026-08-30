@@ -3,10 +3,18 @@ import { Money } from '../domain/money.js';
 import type { Product, ProductImage, ProductOption, Variant } from '../domain/types.js';
 import { HttpError } from './auth.js';
 
+// Every product read carries its seller. One LEFT JOIN, so a merchant who has
+// not named their store yet still returns a product rather than nothing.
+const WITH_SELLER = `FROM products p
+       LEFT JOIN merchant_profiles mp ON mp.merchant_id = p.merchant_id`;
+const SELLER_COLS = `p.*, mp.store_name AS seller_name, mp.slug AS seller_slug`;
+
 function mapRow(r: any): Product {
   return {
     id: r.id,
     merchantId: r.merchant_id,
+    sellerName: r.seller_name ?? '',
+    sellerSlug: r.seller_slug ?? '',
     name: r.name,
     description: r.description,
     pricePaise: Number(r.price_paise),
@@ -58,6 +66,7 @@ export interface CatalogFilter {
   category?: string;
   categories?: string[];
   collectionId?: string;
+  merchantId?: string;
   maxPaise?: number;
   limit?: number;
   includeDrafts?: boolean;
@@ -91,12 +100,16 @@ export async function getCatalog(f: CatalogFilter = {}): Promise<Product[]> {
     where.push(`EXISTS (SELECT 1 FROM collection_products cp
                          WHERE cp.product_id = p.id AND cp.collection_id = $${params.length})`);
   }
+  if (f.merchantId) {
+    params.push(f.merchantId);
+    where.push(`p.merchant_id = $${params.length}`);
+  }
   if (typeof f.maxPaise === 'number') {
     params.push(f.maxPaise);
     where.push(`p.price_paise <= $${params.length}`);
   }
   params.push(f.limit ?? 100);
-  const sql = `SELECT p.* FROM products p ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+  const sql = `SELECT ${SELLER_COLS} ${WITH_SELLER} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                ORDER BY p.rating DESC, p.created_at DESC LIMIT $${params.length}`;
   const { rows } = await query(sql, params);
   return rows.map(mapRow);
@@ -105,7 +118,7 @@ export async function getCatalog(f: CatalogFilter = {}): Promise<Product[]> {
 // Full detail: the product plus its images and variants. This is what the
 // product page and the merchant editor read.
 export async function getProduct(id: string): Promise<Product> {
-  const { rows } = await query('SELECT * FROM products WHERE id = $1', [id]);
+  const { rows } = await query(`SELECT ${SELLER_COLS} ${WITH_SELLER} WHERE p.id = $1`, [id]);
   if (!rows.length) throw new HttpError(404, 'no such product');
   const product = mapRow(rows[0]);
   const [images, variants] = await Promise.all([
@@ -312,7 +325,10 @@ export async function deleteProduct(merchantId: string, id: string): Promise<voi
 }
 
 export async function listOwnProducts(merchantId: string): Promise<Product[]> {
-  const { rows } = await query('SELECT * FROM products WHERE merchant_id=$1 ORDER BY created_at DESC', [merchantId]);
+  const { rows } = await query(
+    `SELECT ${SELLER_COLS} ${WITH_SELLER} WHERE p.merchant_id = $1 ORDER BY p.created_at DESC`,
+    [merchantId],
+  );
   return rows.map(mapRow);
 }
 

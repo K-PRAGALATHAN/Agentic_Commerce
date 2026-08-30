@@ -1,6 +1,7 @@
 import { query } from '../adapters/db/pool.js';
 import type { Product } from '../domain/types.js';
 import { getProduct } from './catalog.js';
+import { edgeWeights } from './kg.js';
 
 // Upsell and cross-sell answer two DIFFERENT questions, and conflating them is
 // why the old version was useless:
@@ -15,11 +16,17 @@ import { getProduct } from './catalog.js';
 export interface Suggestion {
   product: Product;
   reason: string;
-  via: 'graph' | 'complement' | 'similar';
+  via: 'graph' | 'viewed' | 'complement' | 'similar';
 }
 
-// Complementary pairs — what people genuinely buy together. Used when the
-// knowledge graph is too sparse to know, which is most of the time early on.
+// What genuinely goes WITH something, most relevant first — the order matters,
+// it is scored below.
+//
+// Two rules learned the hard way, after a laptop suggested a Lunch Box:
+//   * Never pad a list to guarantee a hit. A category with no honest companion in
+//     this catalogue is left out entirely, and cross-sell returns nothing.
+//   * A substitute is not a complement. laptops -> tablets was wrong: a tablet
+//     replaces a laptop, it does not accompany one.
 const COMPLEMENTS: Record<string, string[]> = {
   'mens-shirts': ['mens-shoes', 'mens-watches', 'sunglasses', 'fragrances'],
   'mens-shoes': ['mens-shirts', 'mens-watches', 'sports-accessories'],
@@ -29,31 +36,50 @@ const COMPLEMENTS: Record<string, string[]> = {
   'womens-bags': ['womens-dresses', 'sunglasses', 'beauty'],
   'womens-jewellery': ['womens-dresses', 'beauty', 'fragrances'],
   'womens-watches': ['womens-jewellery', 'womens-bags'],
-  laptops: ['mobile-accessories', 'tablets', 'kitchen-accessories'],
-  smartphones: ['mobile-accessories', 'tablets'],
-  tablets: ['mobile-accessories', 'laptops'],
+  // Computing: accessories only. Tablets and laptops substitute for each other.
+  laptops: ['mobile-accessories'],
+  smartphones: ['mobile-accessories'],
+  tablets: ['mobile-accessories'],
   'mobile-accessories': ['smartphones', 'laptops', 'tablets'],
-  groceries: ['kitchen-accessories', 'home-decoration'],
-  'kitchen-accessories': ['groceries', 'home-decoration'],
-  furniture: ['home-decoration', 'kitchen-accessories'],
-  'home-decoration': ['furniture', 'kitchen-accessories'],
-  beauty: ['fragrances', 'skin-care', 'womens-jewellery'],
-  fragrances: ['beauty', 'mens-watches'],
+  groceries: ['kitchen-accessories'],
+  'kitchen-accessories': ['groceries'],
+  furniture: ['home-decoration'],
+  'home-decoration': ['furniture'],
+  beauty: ['fragrances', 'skin-care'],
+  fragrances: ['beauty'],
   'skin-care': ['beauty', 'fragrances'],
-  sunglasses: ['mens-watches', 'womens-bags', 'mens-shirts'],
-  motorcycle: ['sports-accessories', 'sunglasses'],
+  sunglasses: ['mens-watches', 'womens-bags'],
+  motorcycle: ['sports-accessories'],
   'sports-accessories': ['mens-shoes', 'motorcycle'],
+  // Deliberately absent: stationery, vehicle, and anything else with no honest
+  // companion here. Absent means "suggest nothing", which is the correct answer.
 };
 
-const SELECT = `p.id, p.merchant_id, p.name, p.description, p.price_paise, p.stock,
+// Evidence is worth more than a curated guess, and a guess is worth more than
+// nothing. A candidate must clear MIN_SCORE to be shown at all.
+const W_BOUGHT = 10;   // per co-purchase, once support is met
+const W_VIEWED = 3;    // per person who viewed both in one session
+const W_CURATED = 4;   // top-priority category; decays down the list
+const MIN_SCORE = 3;   // below this we say nothing
+
+// One person buying two things together is a coincidence — a laptop and cooking
+// oil in the same basket says nothing about either. Two independent baskets is a
+// pattern. Below this support, co-purchase is ignored entirely rather than
+// down-weighted, because a single spurious edge outscores every curated guess.
+const MIN_SUPPORT = 2;
+
+const SELECT = `mp.store_name AS seller_name, mp.slug AS seller_slug,
+                p.id, p.merchant_id, p.name, p.description, p.price_paise, p.stock,
                 p.category, p.rating, p.image, p.created_at, p.status, p.product_type,
                 p.vendor, p.tags, p.compare_at_paise, p.cost_paise, p.track_inventory,
                 p.sell_when_out_of_stock, p.physical, p.weight_grams, p.country_of_origin,
                 p.hs_code, p.seo_title, p.seo_description, p.options`;
+const SELLER = `LEFT JOIN merchant_profiles mp ON mp.merchant_id = p.merchant_id`;
 
 function mapRow(r: any): Product {
   return {
     id: r.id, merchantId: r.merchant_id, name: r.name, description: r.description,
+    sellerName: r.seller_name ?? '', sellerSlug: r.seller_slug ?? '',
     pricePaise: Number(r.price_paise), stock: r.stock, category: r.category,
     rating: Number(r.rating), image: r.image, createdAt: r.created_at,
     status: r.status, productType: r.product_type, vendor: r.vendor, tags: r.tags ?? [],
@@ -74,7 +100,7 @@ const rupees = (paise: number) => `₹${(paise / 100).toFixed(0)}`;
 export async function getUpsell(productId: string): Promise<Suggestion | null> {
   const { rows } = await query<any>(
     `SELECT ${SELECT}
-       FROM products p JOIN products base ON base.id = $1
+       FROM products p ${SELLER} JOIN products base ON base.id = $1
       WHERE p.category = base.category
         AND p.id <> base.id
         AND p.status = 'active'
@@ -99,82 +125,78 @@ export async function getUpsell(productId: string): Promise<Suggestion | null> {
 
 // CROSS-SELL: things that go WITH this, never more of the same.
 //
-// Three sources, best evidence first:
-//   1. the knowledge graph — people actually bought these together
-//   2. complementary categories — the curated map above
-//   3. semantic similarity — shared vocabulary in name/description/tags, but
-//      restricted to a DIFFERENT category so it stays a complement
+// Scored, not cascaded. Every candidate earns a score from three signals and has
+// to clear MIN_SCORE, so when nothing genuinely fits the answer is an empty list.
+//   1. co-purchase  — people actually bought these together   (strongest)
+//   2. co-view      — people looked at both in one session
+//   3. curated      — the map above, weighted by position
+//
+// There is deliberately NO text-similarity signal. Similar wording finds
+// SUBSTITUTES: a laptop and another laptop read almost identically, while a
+// laptop and its charger share no vocabulary at all. Using it here was the wrong
+// instinct and it has been removed.
 export async function getCrossSell(productId: string, limit = 3): Promise<Suggestion[]> {
   const base = await getProduct(productId);
-  const out: Suggestion[] = [];
-  const seen = new Set<string>([productId]);
 
-  // 1. Real co-occurrence.
-  const graph = await query<any>(
-    `SELECT ${SELECT}, e.weight
-       FROM kg_edges e JOIN products p ON p.id = e.dst_id
-      WHERE e.src_id = $1 AND e.type = 'BOUGHT_WITH'
-        AND p.status = 'active' AND p.category <> $2
-      ORDER BY e.weight DESC LIMIT $3`,
-    [productId, base.category, limit],
-  );
-  for (const r of graph.rows) {
-    if (seen.has(r.id)) continue;
-    seen.add(r.id);
-    out.push({
-      product: mapRow(r), via: 'graph',
-      reason: `bought together with ${base.name} by ${r.weight} other customer${r.weight === 1 ? '' : 's'}`,
-    });
-  }
-
-  // 2. Complementary categories.
+  // Curated categories carry a rank: first in the list scores highest. The old
+  // version ordered by category name, so the least relevant category won whenever
+  // there was one slot to fill.
   const complements = COMPLEMENTS[base.category] ?? [];
-  if (out.length < limit && complements.length) {
-    const rows = await query<any>(
-      `SELECT DISTINCT ON (p.category) ${SELECT}
-         FROM products p
-        WHERE p.category = ANY($1) AND p.status = 'active' AND p.stock > 0
-          AND NOT (p.id = ANY($2::uuid[]))
-        ORDER BY p.category, p.rating DESC
-        LIMIT $3`,
-      [complements, [...seen], limit - out.length],
-    );
-    for (const r of rows.rows) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id);
-      out.push({
-        product: mapRow(r), via: 'complement',
-        reason: `${r.category.replace(/-/g, ' ')} that pairs with ${base.name}`,
-      });
-    }
+  const curatedRank = new Map(complements.map((c, i) => [c, complements.length - i]));
+
+  const [bought, viewed] = await Promise.all([
+    edgeWeights(productId, 'BOUGHT_WITH'),
+    edgeWeights(productId, 'VIEWED_WITH'),
+  ]);
+
+  // Everything that could possibly qualify: graph neighbours plus stocked items
+  // from the curated categories. Same category is excluded throughout — those are
+  // substitutes, and suggesting one to someone who just chose is pointless.
+  const ids = [...new Set([...bought.keys(), ...viewed.keys()])];
+  const { rows } = await query<any>(
+    `SELECT ${SELECT}
+       FROM products p ${SELLER}
+      WHERE p.status = 'active' AND p.stock > 0
+        AND p.id <> $1
+        AND p.category <> $2
+        AND (p.id = ANY($3::uuid[]) OR p.category = ANY($4))`,
+    [productId, base.category, ids, complements],
+  );
+
+  const scored = rows.map((r: any) => {
+    const rawB = bought.get(r.id) ?? 0;
+    const b = rawB >= MIN_SUPPORT ? rawB : 0;
+    const v = viewed.get(r.id) ?? 0;
+    const c = curatedRank.get(r.category) ?? 0;
+    // Rating is a TIE-BREAK, never a reason to include something. Treating it as
+    // a reason is how a well-rated Lunch Box outranked a relevant accessory.
+    const score = b * W_BOUGHT + v * W_VIEWED + c * W_CURATED;
+    return { row: r, score, b, v };
+  })
+    .filter((x: any) => x.score >= MIN_SCORE)
+    .sort((a: any, b2: any) => b2.score - a.score || Number(b2.row.rating) - Number(a.row.rating));
+
+  // One per category. Without this the top-ranked category takes every slot —
+  // a shirt returned three pairs of shoes, where a shoe, a watch and a fragrance
+  // is plainly more useful. Graph evidence is exempt: if two specific things are
+  // genuinely bought together, that beats spreading for variety.
+  const spread: typeof scored = [];
+  const usedCategory = new Set<string>();
+  for (const x of scored) {
+    if (x.b === 0 && usedCategory.has(x.row.category)) continue;
+    usedCategory.add(x.row.category);
+    spread.push(x);
+    if (spread.length >= limit) break;
   }
 
-  // 3. Semantic similarity — shared vocabulary, different category.
-  //    full-text ranking over name + description + tags, which is the closest
-  //    thing to "means something similar" available without a vector store.
-  if (out.length < limit) {
-    const rows = await query<any>(
-      `SELECT ${SELECT},
-              ts_rank(
-                to_tsvector('english', p.name || ' ' || p.description || ' ' || array_to_string(p.tags, ' ')),
-                plainto_tsquery('english', $2)
-              ) AS rank
-         FROM products p
-        WHERE p.status = 'active' AND p.stock > 0
-          AND p.category <> $3
-          AND NOT (p.id = ANY($4::uuid[]))
-          AND to_tsvector('english', p.name || ' ' || p.description || ' ' || array_to_string(p.tags, ' '))
-              @@ plainto_tsquery('english', $2)
-        ORDER BY rank DESC, p.rating DESC
-        LIMIT $1`,
-      [limit - out.length, `${base.name} ${base.description}`.slice(0, 300), base.category, [...seen]],
-    );
-    for (const r of rows.rows) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id);
-      out.push({ product: mapRow(r), via: 'similar', reason: `similar in style to ${base.name}` });
-    }
-  }
-
-  return out.slice(0, limit);
+  return spread.map((x: any) => ({
+    product: mapRow(x.row),
+    via: x.b > 0 ? 'graph' : x.v > 0 ? 'viewed' : 'complement',
+    // Worded for a customer, not for us. No "complementary", no "cross-sell".
+    reason: x.b > 0
+      ? `often bought with ${base.name}`
+      : x.v > 0
+        ? `shoppers looking at ${base.name} also looked at this`
+        : `goes well with ${base.name}`,
+  }));
 }

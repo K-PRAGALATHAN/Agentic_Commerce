@@ -1,0 +1,1178 @@
+/* ============================================================
+   SHOP — product cards, the product page, and one orange applied
+   consistently to every bar in the shell.
+
+   Loaded after brand.css and before motion.css (see main.tsx).
+
+   The palette is a single ramp. Before this file the shell still had
+   leftover greens (the brand mark, the account avatar) and a neutral
+   grey search field, so "orange" was only true of the page content and
+   not of the frame around it.
+   ============================================================ */
+
+:root {
+  --br-50:  #fff4ef;
+  --br-100: #ffe4d8;
+  --br-200: #ffc9b2;
+  --br-300: #ffa480;
+  --br-400: #fb7c4d;
+  --br-500: #e8552d;   /* the brand */
+  --br-600: #c9421f;
+  --br-700: #a13418;
+  --br-900: #4a1a0c;
+
+  /* The bars. Warm charcoal rather than pure black, so orange sits on it
+     without vibrating the way a saturated hue does against #000. */
+  --bar: #241a16;
+  --bar-2: #35272110;
+  --bar-hi: #3b2b24;
+  --bar-line: #4a352c;
+  --bar-text: #f4ece8;
+  --bar-dim: #c3aca2;
+}
+
+/* ============================================================
+   THE BARS — top bar, sidebar, panels
+   ============================================================ */
+body, .sp-app { background: var(--bar); }
+
+.sp-topbar { background: var(--bar); border-bottom: 1px solid var(--bar-line); }
+.sp-brand-mark {
+  background: linear-gradient(150deg, var(--br-400) 0%, var(--br-600) 100%);
+  color: #fff;
+  border-radius: 9px;
+}
+.sp-brand-name { color: var(--bar-text); }
+
+.sp-search {
+  background: var(--bar-hi);
+  border-color: var(--bar-line);
+  border-radius: 999px;
+  height: 34px;
+  padding-left: 14px;
+}
+.sp-search:focus-within {
+  background: #45322a;
+  border-color: var(--br-400);
+  box-shadow: 0 0 0 3px rgba(232, 85, 45, .18);
+}
+.sp-search svg { color: var(--br-300); }
+.sp-search input { color: var(--bar-text); }
+.sp-search input::placeholder { color: var(--bar-dim); }
+.sp-kbd span { background: #4d382f; color: var(--bar-dim); border-radius: 5px; }
+
+.sp-top-btn {
+  background: var(--bar-hi); color: var(--bar-text);
+  border-radius: 999px; width: 34px; height: 34px;
+}
+.sp-top-btn:hover:not(:where(:disabled)) { background: #4d382f; color: #fff; }
+.sp-top-btn.on { background: var(--br-500); color: #fff; }
+.sp-store { background: var(--bar-hi); border-radius: 999px; height: 34px; }
+.sp-store:hover:not(:where(:disabled)) { background: #4d382f; }
+.sp-store.on { background: var(--br-500); }
+.sp-store.on .sp-store-name { color: #fff; }
+.sp-store-av {
+  background: linear-gradient(150deg, var(--br-300), var(--br-600));
+  color: #fff; border-radius: 50%;
+}
+.sp-store-name { color: var(--bar-text); }
+
+/* Left rail: a warm off-white, so it reads as part of the same family as the
+   bar above it rather than a neutral grey borrowed from another design. */
+.sp-sidebar { background: #faf6f4; border-right: 1px solid #eadfd9; }
+.sp-nav-item:hover:not(:where(:disabled)) { background: var(--br-50); color: var(--br-700); }
+.sp-nav-item:hover svg { color: var(--br-500); }
+.sp-nav-item.active {
+  background: #fff; color: var(--br-700);
+  box-shadow: inset 2px 0 0 var(--br-500), 0 1px 2px rgba(74, 26, 12, .07);
+}
+.sp-nav-item.active svg { color: var(--br-500); }
+.sp-nav-item .sp-count { background: var(--br-100); color: var(--br-700); }
+.sp-nav-item.active .sp-count { background: var(--br-500); color: #fff; }
+.sp-section:hover { color: var(--br-700); }
+.sp-sub-item.on, .sp-sub-item:hover { color: var(--br-700); background: var(--br-50); }
+.sp-side-card {
+  background: linear-gradient(160deg, var(--br-50), #fff);
+  border: 1px solid var(--br-100);
+}
+.sp-side-card b { color: var(--br-700); }
+
+.sp-body { background: #f7f4f2; }
+.sp-page-head h1 { color: var(--ink); }
+
+/* ============================================================
+   PRODUCT CARD
+   ============================================================ */
+.pc-grid, .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(206px, 1fr));
+  gap: 16px;
+}
+.pc {
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #ece5e1; border-radius: 16px;
+  overflow: hidden; cursor: pointer;
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s ease, border-color .18s ease;
+}
+.pc:hover {
+  transform: translateY(-4px);
+  border-color: var(--br-200);
+  box-shadow: 0 14px 30px rgba(74, 26, 12, .12);
+}
+.pc.out { opacity: .72; }
+
+.pc-media { position: relative; aspect-ratio: 1 / 1; overflow: hidden; background: #f6f2f0; }
+.pc-media img { width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform .5s cubic-bezier(.2,.7,.3,1); }
+.pc:hover .pc-media img { transform: scale(1.07); }
+.pc-noimg { width: 100%; height: 100%; background: linear-gradient(135deg, #f2ece9, #e7ded9); }
+
+.pc-off {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--br-500); color: #fff;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .2px;
+}
+.pc-oos {
+  position: absolute; inset: auto 0 0 0; z-index: 2; padding: 6px;
+  background: rgba(36, 26, 22, .82); color: #fff;
+  font-size: 11px; font-weight: 600; text-align: center;
+}
+
+/* The action stack slides in on hover but is always present for touch: a
+   control that only exists on hover does not exist on a phone. */
+.pc-acts {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  display: flex; flex-direction: column; gap: 6px;
+  opacity: 0; transform: translateX(8px);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.pc:hover .pc-acts, .pc:focus-within .pc-acts { opacity: 1; transform: none; }
+@media (hover: none) { .pc-acts { opacity: 1; transform: none; } }
+.pc-act {
+  width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.94); color: var(--ink-2);
+  border: 1px solid #ece5e1; box-shadow: 0 2px 6px rgba(74,26,12,.12);
+}
+.pc-act:hover:not(:where(:disabled)) { background: var(--br-500); color: #fff; border-color: var(--br-500); }
+.pc-act.on { background: var(--br-500); color: #fff; border-color: var(--br-500); }
+
+.pc-body { padding: 12px 13px 13px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.pc-cat { font-size: 10.5px; color: var(--sp-faint); text-transform: uppercase; letter-spacing: .5px; }
+.pc-head { display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
+.pc-head h3 {
+  margin: 0; font-size: 13px; font-weight: 650; color: var(--ink); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pc-rate {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 999px;
+  background: #fff6e6; color: #8a5a09; font-size: 11px; font-weight: 700;
+}
+.pc-rate svg { color: #f0a318; }
+.pc-seller {
+  font-size: 11px; color: var(--sp-muted); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pc-seller:hover { color: var(--br-600); text-decoration: underline; }
+.pc-price { display: flex; align-items: baseline; gap: 7px; margin-top: 5px; }
+.pc-price b { font-size: 15px; font-weight: 700; color: var(--br-600); }
+.pc-price s { font-size: 12px; color: var(--sp-faint); }
+.pc-add {
+  margin-top: 10px; width: 100%;
+  background: #fff; color: var(--ink); border: 1px solid #e2d8d3; border-radius: 10px;
+  font-size: 12.5px; font-weight: 650; padding: 8px;
+}
+.pc:hover .pc-add:not(:where(:disabled)) { background: var(--br-500); color: #fff; border-color: var(--br-500); }
+.pc-add:disabled { opacity: .55; }
+.pc-body select { margin-top: 10px; border-radius: 10px; }
+
+/* ============================================================
+   PRODUCT PAGE
+   ============================================================ */
+.pd-crumbs {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 14px;
+  font-size: 12px; color: var(--sp-muted);
+}
+.pd-crumbs button { background: none; border: 0; padding: 0; color: var(--sp-muted); font-size: 12px; font-weight: 500; }
+.pd-crumbs button:hover:not(:where(:disabled)) { background: none; color: var(--br-600); text-decoration: underline; }
+.pd-crumbs b { color: var(--ink); font-weight: 600; }
+
+.pd { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 30px; align-items: start; }
+
+.pd-stage {
+  position: relative; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden;
+  background: #f6f2f0; border: 1px solid #ece5e1;
+}
+.pd-stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pd-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.94); color: var(--ink); border: 1px solid #ece5e1;
+  box-shadow: 0 2px 8px rgba(74,26,12,.14);
+}
+.pd-arrow:hover:not(:where(:disabled)) { background: var(--br-500); color: #fff; border-color: var(--br-500); }
+.pd-arrow.l { left: 12px; }
+.pd-arrow.r { right: 12px; }
+
+.pd-thumbs { display: flex; gap: 9px; margin-top: 11px; overflow-x: auto; padding-bottom: 3px; }
+.pd-thumbs button {
+  flex: 0 0 68px; width: 68px; height: 68px; padding: 0; overflow: hidden;
+  border-radius: 12px; border: 2px solid transparent; background: #f6f2f0;
+}
+.pd-thumbs button.on { border-color: var(--br-500); }
+.pd-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.pd-info { padding-top: 2px; }
+.pd-cat { font-size: 11px; color: var(--sp-faint); text-transform: uppercase; letter-spacing: .6px; }
+.pd-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 5px 0 9px; }
+.pd-title h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.5px; color: var(--ink); }
+.pd-stock {
+  padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 650;
+  background: #e6f6ec; color: #1d6b40;
+}
+.pd-stock.no { background: #fdeceb; color: #98261a; }
+
+.pd-rate { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; }
+.pd-stars { display: inline-flex; gap: 2px; }
+.pd-stars span { color: #ded5d0; display: inline-flex; }
+.pd-stars span.on { color: #f0a318; }
+.pd-rate > b { color: var(--ink); }
+.pd-seller { background: none; border: 0; padding: 0; font-size: 12.5px; color: var(--sp-muted); }
+.pd-seller b { color: var(--br-600); }
+.pd-seller:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+.pd-price { display: flex; align-items: baseline; gap: 11px; margin-bottom: 14px; }
+.pd-price b { font-size: 30px; font-weight: 700; letter-spacing: -.8px; color: var(--br-600); }
+.pd-price s { font-size: 16px; color: var(--sp-faint); }
+.pd-save {
+  padding: 3px 9px; border-radius: 999px; background: var(--br-50);
+  color: var(--br-700); font-size: 11px; font-weight: 700;
+}
+.pd-desc { margin: 0 0 18px; font-size: 13.5px; line-height: 1.65; color: var(--ink-2); max-width: 62ch; }
+
+.pd-opts { margin-bottom: 18px; }
+.pd-opts label { display: block; font-size: 12px; font-weight: 650; color: var(--ink); margin-bottom: 7px; }
+.pd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pd-chip {
+  padding: 7px 15px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: #fff; color: var(--ink-2); border: 1px solid #e2d8d3;
+}
+.pd-chip:hover:not(:where(:disabled, .on)) { background: var(--br-50); border-color: var(--br-200); color: var(--br-700); }
+.pd-chip.on { background: var(--br-500); border-color: var(--br-500); color: #fff; }
+.pd-chip:disabled { opacity: .45; text-decoration: line-through; }
+
+.pd-buy { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.pd-qty {
+  display: flex; align-items: center; background: #fff;
+  border: 1px solid #e2d8d3; border-radius: 999px; padding: 3px;
+}
+.pd-qty button {
+  width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  background: var(--br-50); color: var(--br-700); border: 0;
+  display: grid; place-items: center;
+}
+.pd-qty button:hover:not(:where(:disabled)) { background: var(--br-500); color: #fff; }
+.pd-qty input {
+  width: 42px; margin: 0; padding: 0; border: 0; box-shadow: none; background: none;
+  text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.pd-qty input:focus { box-shadow: none; border: 0; }
+.pd-add, .pd-buy-now {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 20px; border-radius: 999px; font-size: 13px; font-weight: 650;
+}
+.pd-add { background: var(--br-500); border-color: var(--br-500); color: #fff; }
+.pd-add:hover:not(:where(:disabled)) {
+  background: var(--br-600); border-color: var(--br-600);
+  box-shadow: 0 8px 18px rgba(232, 85, 45, .3);
+}
+.pd-buy-now { background: var(--ink); border-color: var(--ink); color: #fff; }
+.pd-buy-now:hover:not(:where(:disabled)) { background: #000; }
+.pd-heart {
+  width: 40px; height: 40px; padding: 0; border-radius: 50%;
+  background: #fff; color: var(--ink-2); border: 1px solid #e2d8d3;
+  display: grid; place-items: center;
+}
+.pd-heart:hover:not(:where(:disabled)) { background: var(--br-50); color: var(--br-600); border-color: var(--br-200); }
+
+.pd-meta {
+  display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--ink-2);
+  padding: 14px 0; border-top: 1px solid #ece5e1; border-bottom: 1px solid #ece5e1;
+}
+.pd-meta > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pd-meta span:first-child {
+  min-width: 54px; color: var(--sp-faint); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .4px;
+}
+.pd-meta em {
+  font-style: normal; padding: 2px 9px; border-radius: 999px;
+  background: var(--br-50); color: var(--br-700); font-size: 11px; font-weight: 600;
+}
+.pd-share {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 0; color: var(--br-600); font-size: 12px; font-weight: 600;
+}
+.pd-share:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+.pd-trust { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
+.pd-trust > div { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--sp-muted); }
+.pd-trust svg { color: var(--br-500); flex: 0 0 18px; }
+.pd-trust b { display: block; color: var(--ink); font-size: 12.5px; }
+
+@media (max-width: 940px) {
+  .pd { grid-template-columns: 1fr; }
+  .pd-stage { max-width: 460px; }
+}
+
+/* ============================================================
+   Everything else that still carried the old accent
+   ============================================================ */
+.hm-stage-bg { background: linear-gradient(160deg, var(--br-500) 0%, var(--br-300) 100%); }
+.st-logo { background: var(--br-50); }
+.hm-cat .ring { background: var(--br-50); border-color: var(--br-100); }
+.hm-cat:hover .ring { background: var(--br-100); }
+.toast { background: var(--bar); color: var(--bar-text); }
+.pill.badge-ok { background: #e6f6ec; color: #1d6b40; }
+a { color: var(--br-600); }
+
+/* ============================================================
+   ASSISTANT PANEL — the last surface still on the old accent.
+   The chat keeps its list layout (a narrow column is the wrong
+   place for a card grid); only the colour is brought into line.
+   ============================================================ */
+.sp-res { border-radius: 12px; transition: border-color .14s ease, background .14s ease; }
+.sp-res:hover { border-color: var(--br-200); background: var(--br-50); }
+.sp-res-img { border-radius: 10px; }
+.sp-res-price { color: var(--br-600); font-weight: 700; }
+.sp-res-add {
+  background: var(--br-500); border-color: var(--br-500); color: #fff; border-radius: 999px;
+}
+.sp-res-add:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }
+.sp-rail-checkout { border-radius: 12px; }
+.sp-rail-checkout button { background: var(--br-500); border-color: var(--br-500); border-radius: 999px; }
+.sp-rail-checkout button:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }
+.sp-send { background: var(--br-500); border-color: var(--br-500); }
+.sp-send:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }
+.sp-composer:focus-within { border-color: var(--br-300); box-shadow: 0 0 0 3px rgba(232, 85, 45, .13); }
+.ai-why-toggle { color: var(--br-600); }
+
+/* Merchant console: the same ramp, so the two halves of the product feel
+   like one application rather than two that share a login. */
+.mp-table thead th { background: #faf6f4; color: var(--sp-muted); }
+.mp-table tbody tr:hover { background: var(--br-50); }
+.mp-drop.on, .mp-drop:hover { border-color: var(--br-300); background: var(--br-50); }
+.mp-name { color: var(--ink); }
+.an-bar { background: linear-gradient(90deg, var(--br-500), var(--br-300)); }
+.an-tile b { color: var(--ink); }
+.pay-fig strong { color: var(--ink); }
+
+/* ============================================================
+   LOGIN
+
+   Two panels on a white page: a quiet card on the left carrying the
+   wordmark and one sentence, the form on the right.
+
+   The previous version filled the left half with a saturated orange
+   gradient and a product photograph. Both competed with the only thing
+   on the screen anyone needs to act on. Here the colour is a soft wash
+   behind the copy, and the single strong element is the submit button.
+   ============================================================ */
+.lg {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  padding: 22px;
+  background: #fff;
+}
+
+/* ---------- left panel ---------- */
+.lg-art {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* The pale border and near-white ground belonged to the pale version. Against
+     a dark curtain a light hairline reads as a seam, so the panel carries its
+     own shadow instead and the deepest colour in the cloth becomes its edge. */
+  background: #43170b;
+  border: 0;
+  box-shadow: 0 18px 40px rgba(67, 23, 11, .18);
+}
+.lg-mark { position: relative; z-index: 2; display: flex; align-items: center; gap: 9px; }
+.lg-mark span {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  color: #fff; background: linear-gradient(150deg, var(--br-400), var(--br-600));
+}
+.lg-mark b { font-size: 14px; font-weight: 650; letter-spacing: -.2px; color: #fff; }
+
+.lg-copy { position: relative; z-index: 2; max-width: 24ch; }
+.lg-copy span { font-size: 12.5px; color: rgba(255, 244, 236, .82); }
+.lg-copy h2 {
+  margin: 8px 0 0;
+  font-size: 27px;
+  line-height: 1.22;
+  letter-spacing: -.7px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ---------- right panel ---------- */
+.lg-form { display: grid; place-items: center; padding: 20px 12px; }
+.lg-inner { width: 100%; max-width: 336px; }
+
+.lg-star { display: block; color: var(--br-500); margin-bottom: 16px; line-height: 0; }
+.lg-inner h1 {
+  margin: 0 0 6px;
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -.8px;
+  color: var(--ink);
+}
+.lg-sub { margin: 0 0 24px; font-size: 12.5px; line-height: 1.6; color: var(--sp-muted); }
+.lg-note { font-size: 11.5px; color: var(--sp-muted); margin: -4px 0 14px; }
+
+.lg-inner label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 5px;
+}
+.lg-inner input, .lg-inner select {
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e6e0dc;
+  background: #fff;
+  box-shadow: none;
+  font-size: 13px;
+}
+.lg-inner input::placeholder { color: #b9b0aa; }
+.lg-inner input:focus, .lg-inner select:focus {
+  border-color: var(--br-400);
+  box-shadow: 0 0 0 3px rgba(232, 85, 45, .13);
+}
+
+/* The reveal control sits inside the field, so the input keeps the full width
+   of every other control on the form. */
+.lg-pw { position: relative; }
+.lg-pw input { padding-right: 40px; }
+.lg-pw button {
+  position: absolute; top: 9px; right: 6px;
+  width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center;
+  background: none; border: 0; color: var(--sp-faint);
+}
+.lg-pw button:hover:not(:where(:disabled)) { background: none; color: var(--br-600); }
+
+.lg-forgot { margin: -8px 0 18px; text-align: right; }
+.lg-forgot a, .lg-foot a { color: var(--br-600); font-weight: 650; cursor: pointer; }
+.lg-forgot a { font-size: 12px; }
+.lg-forgot a:hover, .lg-foot a:hover { text-decoration: underline; }
+
+/* Black, not orange. It is the only filled element on a white page, and the
+   orange is already carrying the mark, the links and the whole left panel —
+   a third orange here would leave nothing to draw the eye. */
+.lg-go {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 650;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  color: #fff;
+}
+.lg-go:hover:not(:where(:disabled)) { background: #000; box-shadow: 0 8px 20px rgba(22, 24, 29, .22); }
+.lg-go.ghosted {
+  background: #fff; color: var(--ink); border-color: #e6e0dc; margin-bottom: 18px;
+}
+.lg-go.ghosted:hover:not(:where(:disabled)) { background: #faf7f5; box-shadow: none; }
+
+.lg-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 22px 0 14px;
+  color: var(--sp-faint); font-size: 11.5px;
+}
+.lg-or::before, .lg-or::after { content: " "; flex: 1; height: 1px; background: #efe9e5; }
+
+.lg-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lg-quick button {
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e6e0dc;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.lg-quick button:hover:not(:where(:disabled)) {
+  background: var(--br-50); border-color: var(--br-200); color: var(--br-700);
+}
+
+.lg-foot { margin: 26px 0 0; text-align: center; font-size: 12.5px; color: var(--sp-muted); }
+
+.lg .badge-bad, .lg .badge-ok { display: block; margin: 0 0 14px; font-size: 12px; }
+
+@media (max-width: 900px) {
+  .lg { grid-template-columns: 1fr; padding: 0; gap: 0; }
+  .lg-art { display: none; }
+}
+
+/* ============================================================
+   BRAND MARK AND AVATAR
+
+   The mark is an inline SVG so it inherits currentColor and renders
+   white on the dark bar. The avatar is a rendered image, so both
+   places that show it need object-fit rather than the text centring
+   the old initials badge used.
+   ============================================================ */
+.sp-brand-mark {
+  border-radius: 10px;
+  width: 30px; height: 30px; flex: 0 0 30px;
+}
+.sp-brand-mark svg { width: 19px; height: 19px; }
+
+.sp-store-av, .sp-acct-av {
+  object-fit: cover;
+  background: #fff;
+  padding: 0;
+}
+.sp-store-av {
+  width: 26px; height: 26px; flex: 0 0 26px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .22);
+}
+.sp-store.on .sp-store-av { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .6); }
+.sp-acct-av {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--br-100);
+}
+
+/* The login wordmark uses the same mark on a light panel. */
+.lg-mark span { width: 28px; height: 28px; border-radius: 9px; }
+.lg-mark span svg { width: 18px; height: 18px; }
+
+/* ============================================================
+   CATEGORY TILES — photographs, not emoji
+
+   The ring used to hold a glyph from a hand-written map, which meant a
+   category nobody had thought of fell back to a generic tag. The picture
+   is now the best-rated product in that category, so a new one is
+   illustrated the day its first product lands.
+   ============================================================ */
+.hm-cat { width: 104px; }
+.hm-cat .ring {
+  width: 84px; height: 84px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--br-50);
+  border: 1px solid #f4e2d9;
+  box-shadow: 0 2px 8px rgba(74, 26, 12, .07);
+}
+.hm-cat .ring img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform .35s cubic-bezier(.2, .7, .3, 1);
+}
+.hm-cat .ring b {
+  font-size: 26px; font-weight: 700; color: var(--br-500);
+}
+.hm-cat:hover .ring {
+  border-color: var(--br-300);
+  box-shadow: 0 8px 18px rgba(74, 26, 12, .16);
+}
+.hm-cat:hover .ring img { transform: scale(1.1); }
+.hm-cat span:last-child { max-width: 104px; }
+
+/* ============================================================
+   STORE CARDS — the empty band under the tagline
+
+   `min-height` on the tagline reserved room for two lines and most
+   taglines are one, so every card carried a strip of nothing above its
+   footer. The numbers were already fetched; they just were not shown.
+   ============================================================ */
+.st-card { gap: 12px; padding: 15px 16px 14px; }
+.st-tag { min-height: 0; line-height: 1.5; }
+.st-stats { margin-top: auto; gap: 20px; padding-top: 11px; }
+.st-top b { line-height: 1.3; }
+.st-top > span > span { display: block; margin-top: 1px; }
+
+/* ============================================================
+   CHAT — the storefront card in a narrower column
+   ============================================================ */
+.sp-results.pc-grid {
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.sp-results .pc { border-radius: 13px; }
+.sp-results .pc-body { padding: 10px 11px 11px; }
+.sp-results .pc-head h3 { font-size: 12.5px; }
+.sp-results .pc-price b { font-size: 14px; }
+.sp-results .pc-add { padding: 7px; font-size: 12px; }
+
+/* The in-panel detail borrows the product page's typography but has to fit a
+   column roughly half the width, so the stage and the headline come down. */
+.sp-detail-stage { max-width: 330px; margin-bottom: 14px; }
+.sp-detail .pd-title h1 { font-size: 20px; }
+.sp-detail .pd-price b { font-size: 24px; }
+.sp-detail .pd-desc { font-size: 13px; margin-bottom: 16px; }
+.sp-detail .pd-buy { flex-wrap: wrap; }
+.sp-detail-back {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+  background: none; border: 0; padding: 0; color: var(--br-600);
+  font-size: 12.5px; font-weight: 600;
+}
+.sp-detail-back:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+/* ============================================================
+   CONTENT WIDTH
+
+   `.sp-page` was capped at 1100px and centred. On anything wider than
+   about 1400px that left a broad empty band between the left rail and
+   the content — the page floated in the middle of its own column while
+   the rail sat hard against the edge.
+
+   The cap still exists, because a product grid stretched across an
+   ultrawide monitor reads badly too. It is just far higher, and the
+   gutter is small, so the content starts where the rail ends.
+   ============================================================ */
+.sp-page {
+  max-width: 1560px;
+  padding: 20px 22px 56px;
+  margin: 0;
+}
+@media (min-width: 1700px) {
+  /* Past the cap, re-centre rather than pinning everything to the left. */
+  .sp-page { margin: 0 auto; }
+}
+
+/* ============================================================
+   VOICE
+
+   The microphone and the speaker sit inside the composer, so speaking
+   reads as another way to send a message rather than a separate mode
+   with its own screen.
+   ============================================================ */
+.vc-mic, .vc-spk {
+  width: 32px; height: 32px; flex: 0 0 32px; padding: 0;
+  border-radius: 50%; display: grid; place-items: center;
+  background: transparent; border: 1px solid #e6dcd6; color: var(--ink-2);
+}
+.vc-mic:hover:not(:where(:disabled)), .vc-spk:hover:not(:where(:disabled)) {
+  background: var(--br-50); border-color: var(--br-200); color: var(--br-600);
+}
+.vc-spk.on { color: var(--br-600); border-color: var(--br-200); background: var(--br-50); }
+.vc-mic.on {
+  background: var(--br-500); border-color: var(--br-500); color: #fff;
+  animation: vc-pulse 1.5s ease-out infinite;
+}
+@keyframes vc-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(232, 85, 45, .45); }
+  100% { box-shadow: 0 0 0 11px rgba(232, 85, 45, 0); }
+}
+
+/* Live transcript. Partial results appear here as they arrive, which is the
+   only feedback that the microphone is actually hearing something — silence
+   with a lit button is indistinguishable from a broken mic. */
+.vc-live {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 8px;
+  border-radius: 12px; background: var(--br-50); border: 1px solid var(--br-100);
+  font-size: 12.5px; color: var(--br-700);
+}
+.vc-live > span:nth-child(2) { flex: 1; min-width: 0; color: var(--ink); }
+.vc-live button {
+  background: none; border: 0; padding: 0; color: var(--br-600);
+  font-size: 12px; font-weight: 650;
+}
+.vc-live button:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+.vc-wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 15px; }
+.vc-wave i {
+  width: 3px; border-radius: 2px; background: var(--br-500);
+  animation: vc-bar .9s ease-in-out infinite;
+}
+.vc-wave i:nth-child(1) { height: 6px;  animation-delay: 0s; }
+.vc-wave i:nth-child(2) { height: 13px; animation-delay: .12s; }
+.vc-wave i:nth-child(3) { height: 9px;  animation-delay: .24s; }
+.vc-wave i:nth-child(4) { height: 15px; animation-delay: .36s; }
+@keyframes vc-bar { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+
+/* The read-back. Deliberately loud: this is the last thing between a
+   mishearing and a charge, so it does not look like a toast. */
+.vc-check {
+  margin: 0 14px 10px;
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: #fff;
+  border: 1.5px solid var(--br-300);
+  box-shadow: 0 6px 18px rgba(232, 85, 45, .13);
+}
+.vc-check > div:first-child { margin-bottom: 10px; }
+.vc-check span { display: block; font-size: 11px; color: var(--sp-muted);
+  text-transform: uppercase; letter-spacing: .5px; }
+.vc-check b { font-size: 14px; color: var(--ink); font-weight: 650; }
+.vc-check-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.vc-check-acts button { padding: 7px 14px; font-size: 12.5px; }
+
+.vc-hush {
+  margin-top: 8px;
+  background: none; border: 0; padding: 0;
+  color: var(--br-600); font-size: 12px; font-weight: 600;
+}
+.vc-hush:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-mic.on { animation: none; }
+  .vc-wave i { animation: none; }
+}
+
+/* ============================================================
+   PRODUCT IN THE RIGHT RAIL
+
+   Opening a product from the chat used to replace the conversation.
+   You could no longer read what the assistant had said about the thing
+   you were looking at, which is the one piece of context that matters
+   at that moment. It shares the rail with account and activity instead.
+
+   The product page's own classes are reused, scaled down for a column
+   roughly a third the width.
+   ============================================================ */
+.pp .sp-panel-body { padding: 16px 18px 26px; }
+
+.pp-stage { border-radius: 14px; margin-bottom: 10px; }
+.pp .pd-arrow { width: 28px; height: 28px; }
+.pp .pd-arrow.l { left: 8px; }
+.pp .pd-arrow.r { right: 8px; }
+.pp-thumbs { margin-bottom: 14px; }
+.pp-thumbs button { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 10px; }
+
+.pp .pd-title { margin: 4px 0 8px; gap: 9px; }
+.pp .pd-title h1 { font-size: 19px; letter-spacing: -.4px; }
+.pp .pd-rate { margin-bottom: 10px; font-size: 12px; }
+.pp .pd-price { margin-bottom: 12px; }
+.pp .pd-price b { font-size: 23px; }
+.pp .pd-price s { font-size: 14px; }
+.pp .pd-desc { font-size: 12.5px; line-height: 1.6; margin-bottom: 16px; }
+.pp .pd-opts { margin-bottom: 16px; }
+.pp .pd-chip { padding: 6px 13px; font-size: 12px; }
+
+/* The rail is too narrow for three controls in a row; the actions wrap onto
+   a second line and stretch, rather than shrinking to unreadable. */
+.pp-buy { flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.pp-buy .pd-add, .pp-buy .pd-buy-now { flex: 1 1 auto; justify-content: center; padding: 9px 14px; }
+.pp-buy .pd-qty { flex: 0 0 auto; }
+.pp-buy .pd-heart { width: 36px; height: 36px; flex: 0 0 36px; }
+
+.pp .pd-meta { font-size: 11.5px; padding: 12px 0; }
+
+.pp-full {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 16px; padding: 9px;
+  border-radius: 10px; background: #fff; color: var(--ink);
+  border: 1px solid #e6dcd6; font-size: 12.5px; font-weight: 600;
+}
+.pp-full:hover:not(:where(:disabled)) {
+  background: var(--br-50); border-color: var(--br-200); color: var(--br-700);
+}
+
+/* ============================================================
+   HORIZONTAL ROWS
+
+   "Continue browsing" and the other activity rows lay their cards out
+   in a flex row. The width came from `.sf-scroller .sf-card`, and the
+   shared <ProductCard> renders `.pc` — so the rule stopped matching and
+   the cards lost their basis. In a flex row with no basis the first
+   card takes whatever space it likes, which is why one product filled
+   the row while the rest were squeezed against the edge.
+   ============================================================ */
+.sf-scroller .pc {
+  flex: 0 0 194px;
+  scroll-snap-align: start;
+}
+
+/* ============================================================
+   PRODUCT PAGE WIDTH
+
+   The gallery was capped at 440px and the detail column took the rest,
+   so on a wide page the text column grew to about 1090px while the
+   copy inside it stopped at 62ch. That left a band of nothing to the
+   right of the description, the buy row and the trust items, with the
+   divider rules running out past all of them into empty space.
+
+   Both columns now share the width, so the gallery grows into the space
+   the text was never going to use, and the copy is allowed a slightly
+   longer measure to meet it.
+   ============================================================ */
+.pd {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+  gap: 38px;
+}
+.pd-stage { aspect-ratio: 4 / 3; }
+.pd-desc { max-width: 72ch; }
+
+/* The trust row was three items bunched at the left of a wide column.
+   Spread across it, they read as a strip rather than a leftover. */
+.pd-trust {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1180px) {
+  .pd { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 28px; }
+  .pd-trust { grid-template-columns: 1fr; gap: 12px; }
+}
+
+/* ============================================================
+   CATEGORY TILES — photographs, not emoji
+
+   The ring used to hold a glyph from a hand-written map, which meant a
+   category nobody had thought of fell back to a generic tag. The picture
+   is now the best-rated product in that category, so a new one is
+   illustrated the day its first product lands.
+   ============================================================ */
+.hm-cat { width: 104px; }
+.hm-cat .ring {
+  width: 84px; height: 84px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--br-50);
+  border: 1px solid #f4e2d9;
+  box-shadow: 0 2px 8px rgba(74, 26, 12, .07);
+}
+.hm-cat .ring img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform .35s cubic-bezier(.2, .7, .3, 1);
+}
+.hm-cat .ring b {
+  font-size: 26px; font-weight: 700; color: var(--br-500);
+}
+.hm-cat:hover .ring {
+  border-color: var(--br-300);
+  box-shadow: 0 8px 18px rgba(74, 26, 12, .16);
+}
+.hm-cat:hover .ring img { transform: scale(1.1); }
+.hm-cat span:last-child { max-width: 104px; }
+
+/* ============================================================
+   STORE CARDS — the empty band under the tagline
+
+   `min-height` on the tagline reserved room for two lines and most
+   taglines are one, so every card carried a strip of nothing above its
+   footer. The numbers were already fetched; they just were not shown.
+   ============================================================ */
+.st-card { gap: 12px; padding: 15px 16px 14px; }
+.st-tag { min-height: 0; line-height: 1.5; }
+.st-stats { margin-top: auto; gap: 20px; padding-top: 11px; }
+.st-top b { line-height: 1.3; }
+.st-top > span > span { display: block; margin-top: 1px; }
+
+/* ============================================================
+   CHAT — the storefront card in a narrower column
+   ============================================================ */
+.sp-results.pc-grid {
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.sp-results .pc { border-radius: 13px; }
+.sp-results .pc-body { padding: 10px 11px 11px; }
+.sp-results .pc-head h3 { font-size: 12.5px; }
+.sp-results .pc-price b { font-size: 14px; }
+.sp-results .pc-add { padding: 7px; font-size: 12px; }
+
+/* The in-panel detail borrows the product page's typography but has to fit a
+   column roughly half the width, so the stage and the headline come down. */
+.sp-detail-stage { max-width: 330px; margin-bottom: 14px; }
+.sp-detail .pd-title h1 { font-size: 20px; }
+.sp-detail .pd-price b { font-size: 24px; }
+.sp-detail .pd-desc { font-size: 13px; margin-bottom: 16px; }
+.sp-detail .pd-buy { flex-wrap: wrap; }
+.sp-detail-back {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+  background: none; border: 0; padding: 0; color: var(--br-600);
+  font-size: 12.5px; font-weight: 600;
+}
+.sp-detail-back:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+/* ============================================================
+   CONTENT WIDTH
+
+   `.sp-page` was capped at 1100px and centred. On anything wider than
+   about 1400px that left a broad empty band between the left rail and
+   the content — the page floated in the middle of its own column while
+   the rail sat hard against the edge.
+
+   The cap still exists, because a product grid stretched across an
+   ultrawide monitor reads badly too. It is just far higher, and the
+   gutter is small, so the content starts where the rail ends.
+   ============================================================ */
+.sp-page {
+  max-width: 1560px;
+  padding: 20px 22px 56px;
+  margin: 0;
+}
+@media (min-width: 1700px) {
+  /* Past the cap, re-centre rather than pinning everything to the left. */
+  .sp-page { margin: 0 auto; }
+}
+
+/* ============================================================
+   VOICE
+
+   The microphone and the speaker sit inside the composer, so speaking
+   reads as another way to send a message rather than a separate mode
+   with its own screen.
+   ============================================================ */
+.vc-mic, .vc-spk {
+  width: 32px; height: 32px; flex: 0 0 32px; padding: 0;
+  border-radius: 50%; display: grid; place-items: center;
+  background: transparent; border: 1px solid #e6dcd6; color: var(--ink-2);
+}
+.vc-mic:hover:not(:where(:disabled)), .vc-spk:hover:not(:where(:disabled)) {
+  background: var(--br-50); border-color: var(--br-200); color: var(--br-600);
+}
+.vc-spk.on { color: var(--br-600); border-color: var(--br-200); background: var(--br-50); }
+.vc-mic.on {
+  background: var(--br-500); border-color: var(--br-500); color: #fff;
+  animation: vc-pulse 1.5s ease-out infinite;
+}
+@keyframes vc-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(232, 85, 45, .45); }
+  100% { box-shadow: 0 0 0 11px rgba(232, 85, 45, 0); }
+}
+
+/* Live transcript. Partial results appear here as they arrive, which is the
+   only feedback that the microphone is actually hearing something — silence
+   with a lit button is indistinguishable from a broken mic. */
+.vc-live {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 8px;
+  border-radius: 12px; background: var(--br-50); border: 1px solid var(--br-100);
+  font-size: 12.5px; color: var(--br-700);
+}
+.vc-live > span:nth-child(2) { flex: 1; min-width: 0; color: var(--ink); }
+.vc-live button {
+  background: none; border: 0; padding: 0; color: var(--br-600);
+  font-size: 12px; font-weight: 650;
+}
+.vc-live button:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+.vc-wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 15px; }
+.vc-wave i {
+  width: 3px; border-radius: 2px; background: var(--br-500);
+  animation: vc-bar .9s ease-in-out infinite;
+}
+.vc-wave i:nth-child(1) { height: 6px;  animation-delay: 0s; }
+.vc-wave i:nth-child(2) { height: 13px; animation-delay: .12s; }
+.vc-wave i:nth-child(3) { height: 9px;  animation-delay: .24s; }
+.vc-wave i:nth-child(4) { height: 15px; animation-delay: .36s; }
+@keyframes vc-bar { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+
+/* The read-back. Deliberately loud: this is the last thing between a
+   mishearing and a charge, so it does not look like a toast. */
+.vc-check {
+  margin: 0 14px 10px;
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: #fff;
+  border: 1.5px solid var(--br-300);
+  box-shadow: 0 6px 18px rgba(232, 85, 45, .13);
+}
+.vc-check > div:first-child { margin-bottom: 10px; }
+.vc-check span { display: block; font-size: 11px; color: var(--sp-muted);
+  text-transform: uppercase; letter-spacing: .5px; }
+.vc-check b { font-size: 14px; color: var(--ink); font-weight: 650; }
+.vc-check-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.vc-check-acts button { padding: 7px 14px; font-size: 12.5px; }
+
+.vc-hush {
+  margin-top: 8px;
+  background: none; border: 0; padding: 0;
+  color: var(--br-600); font-size: 12px; font-weight: 600;
+}
+.vc-hush:hover:not(:where(:disabled)) { background: none; text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-mic.on { animation: none; }
+  .vc-wave i { animation: none; }
+}
+
+/* ============================================================
+   PRODUCT IN THE RIGHT RAIL
+
+   Opening a product from the chat used to replace the conversation.
+   You could no longer read what the assistant had said about the thing
+   you were looking at, which is the one piece of context that matters
+   at that moment. It shares the rail with account and activity instead.
+
+   The product page's own classes are reused, scaled down for a column
+   roughly a third the width.
+   ============================================================ */
+.pp .sp-panel-body { padding: 16px 18px 26px; }
+
+.pp-stage { border-radius: 14px; margin-bottom: 10px; }
+.pp .pd-arrow { width: 28px; height: 28px; }
+.pp .pd-arrow.l { left: 8px; }
+.pp .pd-arrow.r { right: 8px; }
+.pp-thumbs { margin-bottom: 14px; }
+.pp-thumbs button { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 10px; }
+
+.pp .pd-title { margin: 4px 0 8px; gap: 9px; }
+.pp .pd-title h1 { font-size: 19px; letter-spacing: -.4px; }
+.pp .pd-rate { margin-bottom: 10px; font-size: 12px; }
+.pp .pd-price { margin-bottom: 12px; }
+.pp .pd-price b { font-size: 23px; }
+.pp .pd-price s { font-size: 14px; }
+.pp .pd-desc { font-size: 12.5px; line-height: 1.6; margin-bottom: 16px; }
+.pp .pd-opts { margin-bottom: 16px; }
+.pp .pd-chip { padding: 6px 13px; font-size: 12px; }
+
+/* The rail is too narrow for three controls in a row; the actions wrap onto
+   a second line and stretch, rather than shrinking to unreadable. */
+.pp-buy { flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.pp-buy .pd-add, .pp-buy .pd-buy-now { flex: 1 1 auto; justify-content: center; padding: 9px 14px; }
+.pp-buy .pd-qty { flex: 0 0 auto; }
+.pp-buy .pd-heart { width: 36px; height: 36px; flex: 0 0 36px; }
+
+.pp .pd-meta { font-size: 11.5px; padding: 12px 0; }
+
+.pp-full {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 16px; padding: 9px;
+  border-radius: 10px; background: #fff; color: var(--ink);
+  border: 1px solid #e6dcd6; font-size: 12.5px; font-weight: 600;
+}
+.pp-full:hover:not(:where(:disabled)) {
+  background: var(--br-50); border-color: var(--br-200); color: var(--br-700);
+}
+
+/* ============================================================
+   HORIZONTAL ROWS
+
+   "Continue browsing" and the other activity rows lay their cards out
+   in a flex row. The width came from `.sf-scroller .sf-card`, and the
+   shared <ProductCard> renders `.pc` — so the rule stopped matching and
+   the cards lost their basis. In a flex row with no basis the first
+   card takes whatever space it likes, which is why one product filled
+   the row while the rest were squeezed against the edge.
+   ============================================================ */
+.sf-scroller .pc {
+  flex: 0 0 194px;
+  scroll-snap-align: start;
+}
+
+/* ============================================================
+   PRODUCT PAGE WIDTH
+
+   The gallery was capped at 440px and the detail column took the rest,
+   so on a wide page the text column grew to about 1090px while the
+   copy inside it stopped at 62ch. That left a band of nothing to the
+   right of the description, the buy row and the trust items, with the
+   divider rules running out past all of them into empty space.
+
+   Both columns now share the width, so the gallery grows into the space
+   the text was never going to use, and the copy is allowed a slightly
+   longer measure to meet it.
+   ============================================================ */
+.pd {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+  gap: 38px;
+}
+.pd-stage { aspect-ratio: 4 / 3; }
+.pd-desc { max-width: 72ch; }
+
+/* The trust row was three items bunched at the left of a wide column.
+   Spread across it, they read as a strip rather than a leftover. */
+.pd-trust {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1180px) {
+  .pd { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 28px; }
+  .pd-trust { grid-template-columns: 1fr; gap: 12px; }
+}
+
+/* ============================================================
+   LOGIN PANEL — the photograph
+
+   `cover` with an explicit `object-position`, not `contain`. Contain
+   would letterbox a 3:4 photo inside a taller panel and leave bands of
+   background above and below it, which is what makes a picture look
+   like it is hanging in the box rather than being the box.
+
+   The vertical bias keeps the clothes rail and the chair in frame as
+   the panel gets taller, instead of drifting up and leaving the rug to
+   fill the view.
+   ============================================================ */
+.lg-art { padding: 34px; background: #3a3d31; }
+.lg-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 38%;
+  display: block;
+  /* A touch more depth than the file carries on its own; the enhancement
+     baked into the JPEG does the heavy lifting, this is the last few percent. */
+  filter: saturate(1.06) contrast(1.03);
+}
+
+/* The copy sits at the bottom of the frame, which is the busiest part of
+   this photograph. A scrim, not a blur: the picture stays sharp and the
+   text still has something flat to sit on. */
+.lg-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg,
+      rgba(24, 26, 20, .58) 0%,
+      rgba(24, 26, 20, .08) 22%,
+      rgba(24, 26, 20, .10) 46%,
+      rgba(24, 26, 20, .62) 82%,
+      rgba(24, 26, 20, .86) 100%),
+    radial-gradient(120% 80% at 30% 100%, rgba(24, 26, 20, .5), transparent 70%);
+  pointer-events: none;
+}
+
+.lg-copy h2 { text-shadow: 0 2px 20px rgba(16, 18, 13, .6); }
+.lg-copy span { text-shadow: 0 1px 12px rgba(16, 18, 13, .55); }
+.lg-mark b { text-shadow: 0 1px 12px rgba(16, 18, 13, .6); }
+.lg-mark span { background: rgba(255, 255, 255, .18); backdrop-filter: blur(7px); }
+
+/* ============================================================
+   HERO ARCH — the photograph inside it
+
+   The arch keeps its exact geometry (same inset, same radius), so the
+   floating price chips stay where they were composed. The image is
+   clipped by the container rather than shaped itself, which means the
+   arch and the picture can never drift out of agreement.
+   ============================================================ */
+.hm-stage-bg {
+  overflow: hidden;
+  opacity: 1;
+  background: #6d1622;
+  box-shadow: 0 18px 40px rgba(74, 26, 12, .22);
+}
+.hm-stage-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 46%;
+  display: block;
+  filter: saturate(1.05) contrast(1.03);
+}

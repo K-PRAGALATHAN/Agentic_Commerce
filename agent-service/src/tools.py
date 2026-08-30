@@ -75,6 +75,12 @@ class Tools:
     async def clusters(self) -> list[dict]:
         return (await self._get("/kg/clusters")).get("clusters", [])
 
+    async def stores(self) -> list[dict]:
+        return (await self._get("/stores")).get("stores", [])
+
+    async def store(self, slug: str) -> dict:
+        return await self._get(f"/stores/{slug}")
+
     async def get_context(self) -> dict:
         path = "/agent/context"
         if self.conversation_id:

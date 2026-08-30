@@ -5,6 +5,7 @@ import { listCollections } from '../../../application/collections.js';
 import { personalisedRows, recordView } from '../../../application/storefront.js';
 import { requireAuth } from '../middleware/auth.js';
 import { clusters } from '../../../application/kg.js';
+import { listStores, getStore } from '../../../application/merchants.js';
 import { asyncHandler } from '../middleware/errors.js';
 
 export const catalogRouter = Router();
@@ -25,6 +26,18 @@ catalogRouter.post(
   asyncHandler(async (req, res) => {
     await recordView(req.user!.sub, req.params.id);
     res.json({ ok: true });
+  }),
+);
+
+// Who sells here. Public on purpose: a customer should be able to look a shop
+// up before buying from it, and the assistant reads the same endpoint.
+catalogRouter.get('/stores', asyncHandler(async (_req, res) => res.json({ stores: await listStores() })));
+catalogRouter.get(
+  '/stores/:slug',
+  asyncHandler(async (req, res) => {
+    const store = await getStore(req.params.slug);
+    const products = await getCatalog({ merchantId: store.merchantId, limit: 200 });
+    res.json({ store, products });
   }),
 );
 

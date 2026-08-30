@@ -6,7 +6,7 @@ token and therefore inherits exactly the user's permissions — never more. The
 backend re-checks on every write, so a hallucinated tool call cannot become an
 unauthorised action.
 """
-from .. import resolver
+from .. import model, resolver
 from ..harness.loop import Registry, Tool
 
 
@@ -16,7 +16,11 @@ def build(tools) -> Registry:
     def _slim(products: list[dict]) -> list[dict]:
         return [
             {"id": p["id"], "name": p["name"], "price_rupees": p["pricePaise"] / 100,
-             "rating": p.get("rating"), "category": p.get("category"), "stock": p.get("stock")}
+             "rating": p.get("rating"), "category": p.get("category"), "stock": p.get("stock"),
+             # Several independent merchants sell here. Who takes the money is
+             # part of the offer, so the assistant is never in a position to
+             # describe a product without being able to say whose it is.
+             "sold_by": p.get("sellerName")}
             for p in products[:12]
         ]
 
@@ -74,6 +78,7 @@ def build(tools) -> Registry:
         return {
             "id": p.get("id"), "name": p.get("name"), "description": p.get("description"),
             "price_rupees": p.get("pricePaise", 0) / 100,
+            "sold_by": p.get("sellerName"),
             "variants": [
                 {"variant_id": v["id"], "title": v["title"],
                  "price_rupees": v["pricePaise"] / 100, "stock": v["stock"]}
@@ -83,6 +88,38 @@ def build(tools) -> Registry:
 
     async def browse_collections():
         return {"collections": await tools.collections()}
+
+    async def list_stores():
+        """Who sells on this marketplace.
+
+        Several independent merchants share one catalogue. A customer asking
+        "which shops are there" or "what does Nova Tech sell" is asking about
+        the seller, not the product, and without this the agent could only
+        answer from the seller name attached to individual search hits.
+        """
+        return {"stores": [
+            {"slug": s["slug"], "name": s["storeName"], "sells": s["tagline"],
+             "products": s["productCount"], "rating": s["rating"],
+             "categories": s.get("categories", []), "location": s.get("location", "")}
+            for s in await tools.stores()
+        ]}
+
+    async def store_products(slug: str, max_rupees: float | None = None):
+        """Everything one named store sells, optionally under a price."""
+        data = await tools.store(slug)
+        items = data.get("products", [])
+        if max_rupees is not None:
+            items = [p for p in items if p["pricePaise"] <= max_rupees * 100]
+        info = data.get("store", {})
+        return {
+            "store": {"name": info.get("storeName"), "sells": info.get("tagline"),
+                      "about": info.get("about")},
+            "products": _slim(items),
+            # Same out-of-band card payload as search_products. Without it a
+            # store-scoped question answered in prose only, while the identical
+            # question phrased as a search came back with pictures.
+            "_ui": {"options": items[:6]},
+        }
 
     async def list_carts():
         carts = await tools.list_carts()
@@ -154,12 +191,73 @@ def build(tools) -> Registry:
                            "rating": u.get("rating"), "why": u.get("reason")}}
 
     async def cross_sell(product_id: str):
+        """Things that go WITH this product.
+
+        The backend answers from evidence — co-purchase, co-view, a curated map —
+        and returns NOTHING when nothing clears the bar. On a young catalogue that
+        is often, so when it comes back empty we ask the model once, grounded in
+        real candidates. It is allowed to answer "nothing fits", and frequently
+        should: a laptop paired with a lunch box costs more trust than a missed
+        suggestion.
+        """
         items = await tools.cross_sell(product_id)
-        return {"goes_well_with": [
-            {"id": p["id"], "name": p["name"], "price_rupees": p["pricePaise"] / 100,
-             "category": p.get("category"), "why": p.get("reason")}
-            for p in items
-        ]}
+        if items:
+            return {"goes_well_with": [
+                {"id": p["id"], "name": p["name"], "price_rupees": p["pricePaise"] / 100,
+                 "category": p.get("category"), "why": p.get("reason")}
+                for p in items
+            ]}
+
+        if not model.is_available():
+            return {"goes_well_with": []}
+
+        base = await tools.product_detail(product_id)
+        if not base.get("id"):
+            return {"goes_well_with": []}
+
+        # Candidates from OTHER categories only — same-category items are
+        # substitutes, and the whole point here is what accompanies the product.
+        pool = [
+            p for p in await tools.search_products("", None)
+            if p.get("category") != base.get("category") and p["id"] != product_id
+        ][:20]
+        if not pool:
+            return {"goes_well_with": []}
+
+        listing = "\n".join(
+            f'{p["id"]} | {p["name"]} | {p.get("category")} | Rs {p["pricePaise"] / 100:.0f}'
+            for p in pool
+        )
+        try:
+            res = await model.chat([
+                {"role": "system", "content": (
+                    "Pick at most ONE product from the list that a customer buying the given "
+                    "product would genuinely also want — something used WITH it, not instead "
+                    "of it. Most products have no good pairing; returning none is the right "
+                    "answer far more often than forcing one.\n"
+                    'Return JSON only: {"id": "<id or empty>", "why": "<short reason, plain '
+                    'words a shopper would use>"}'
+                )},
+                {"role": "user", "content":
+                    f'Customer is buying: {base.get("name")} ({base.get("category")})\n\n'
+                    f"Candidates (id | name | category | price):\n{listing}"},
+            ], temperature=0)
+            await tools.log_model_cost(
+                "cross_sell", res["model"], res["tokens_in"], res["tokens_out"],
+                model.estimate_cost_inr(res["model"], res["tokens_in"], res["tokens_out"]),
+            )
+            data = model.extract_json(res["text"]) or {}
+            pick = next((p for p in pool if p["id"] == data.get("id")), None)
+            if not pick:
+                return {"goes_well_with": []}
+            return {"goes_well_with": [{
+                "id": pick["id"], "name": pick["name"],
+                "price_rupees": pick["pricePaise"] / 100,
+                "category": pick.get("category"),
+                "why": str(data.get("why", ""))[:120] or f'goes well with {base.get("name")}',
+            }]}
+        except Exception:
+            return {"goes_well_with": []}
 
     async def order_history():
         ctx = await tools.get_context()
@@ -192,6 +290,20 @@ def build(tools) -> Registry:
 
     r.add(Tool("browse_collections", "List the store's collections (curated product groups).",
                {"type": "object", "properties": {}, "required": []}, browse_collections))
+
+    r.add(Tool("list_stores",
+               "The independent stores selling on this marketplace, with what each one "
+               "sells and how many products it has. Use it when the customer asks who "
+               "they are buying from, which shops exist, or wants to shop one store.",
+               {"type": "object", "properties": {}, "required": []}, list_stores))
+
+    r.add(Tool("store_products",
+               "What one named store sells. Call list_stores first to get the slug. "
+               "Use this instead of search_products when the customer has named a shop.",
+               {"type": "object", "properties": {
+                   "slug": {"type": "string", "description": "store slug from list_stores"},
+                   "max_rupees": {"type": "number"},
+               }, "required": ["slug"]}, store_products))
 
     r.add(Tool("list_categories",
                "Every category the store actually stocks, with product counts. Call this "
@@ -244,9 +356,9 @@ def build(tools) -> Registry:
                {"type": "object", "properties": {"product_id": txt("Product id")}, "required": ["product_id"]}, upsell))
 
     r.add(Tool("cross_sell",
-               "Products that go WITH this one — a different category, not more of the same. "
-               "Ranked by real purchase co-occurrence first, then complementary categories, "
-               "then semantic similarity. Each carries its own reason.",
+               "Something that goes WITH this product — used alongside it, not instead of "
+               "it. Often returns nothing, and that is a real answer: say nothing rather "
+               "than offer a poor match.",
                {"type": "object", "properties": {"product_id": txt("Product id")}, "required": ["product_id"]}, cross_sell))
 
     r.add(Tool("order_history", "The user's recent orders.",

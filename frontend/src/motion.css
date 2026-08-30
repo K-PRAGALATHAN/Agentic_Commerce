@@ -1,0 +1,92 @@
+/* ============================================================
+   MOTION — hover states and the small movements that make a page
+   feel current.
+
+   Rules of the file:
+     * Transform and opacity only. Animating layout properties on a grid
+       of a hundred product cards drops frames on exactly the machine a
+       demo is running on.
+     * Every hover has a visible resting state. Controls that only appear
+       on hover are unusable on a touch screen, so the quick-add button
+       fades in but is never the only way to buy.
+     * Honour prefers-reduced-motion at the bottom, in one place.
+
+   Loaded last (see main.tsx), so these win ties.
+   ============================================================ */
+
+/* ---------- product cards ----------
+   The card's own lift, image zoom and action stack live in shop.css beside the
+   rest of its styling. What was here was the previous .sf-card markup, which no
+   longer exists anywhere — a shared <ProductCard> replaced it. Dead rules in a
+   motion file are worse than useless: they look like they are doing something.
+   ---------------------------------------------------------------------- */
+
+/* ---------- buttons ---------- */
+button { transition: background .14s ease, border-color .14s ease, transform .14s ease, box-shadow .14s ease; }
+button:active:not(:where(:disabled)) { transform: translateY(1px); }
+.btn-brand:hover:not(:where(:disabled)),
+button.primary:hover:not(:where(:disabled)) {
+  box-shadow: 0 6px 16px rgba(232, 85, 45, .32);
+}
+/* ---------- store cards ---------- */
+.st-card { transition: transform .18s cubic-bezier(.2, .7, .3, 1), box-shadow .18s ease, border-color .18s ease; }
+.st-card:hover:not(:where(:disabled)) { transform: translateY(-3px); }
+.st-card .st-logo { transition: transform .2s cubic-bezier(.2, .7, .3, 1); }
+.st-card:hover .st-logo { transform: rotate(-6deg) scale(1.06); }
+
+/* ---------- the shell ---------- */
+.sp-nav-item { transition: background .13s ease, box-shadow .13s ease; }
+.sp-nav-item svg { transition: transform .16s ease, color .16s ease; }
+.sp-nav-item:hover svg { transform: translateX(1px); color: var(--brand); }
+
+/* ---------- landing sections ---------- */
+.hm-sec-head h2 { position: relative; padding-bottom: 2px; }
+.hm-link svg { transition: transform .16s ease; }
+.hm-link:hover svg { transform: translateX(3px); }
+
+/* Rows arrive rather than appear. One short fade, staggered a little by
+   position, and never long enough to make the page feel slow. */
+@keyframes hm-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hm-sec, .hm-hero, .sf-row { animation: hm-in .34s cubic-bezier(.2, .7, .3, 1) both; }
+.hm-sec:nth-of-type(2) { animation-delay: .04s; }
+.hm-sec:nth-of-type(3) { animation-delay: .08s; }
+.hm-sec:nth-of-type(4) { animation-delay: .12s; }
+
+/* The hero chips drift on their own, so the panel is not completely static
+   while someone reads it. Two of them, offset, at an amplitude small enough
+   to be felt rather than watched. */
+@keyframes hm-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-7px); }
+}
+.hm-chip.a { animation: hm-float 3.4s ease-in-out infinite alternate; }
+.hm-chip.c { animation: hm-float 4.1s ease-in-out .5s infinite alternate; }
+.hm-chip:hover:not(:where(:disabled)) { animation-play-state: paused; }
+
+/* ---------- login ---------- */
+.lg-inner input, .lg-inner select { transition: border-color .14s ease, box-shadow .14s ease; }
+.lg-quick button, .lg-go { transition: background .14s ease, border-color .14s ease, color .14s ease, box-shadow .16s ease; }
+/* ---------- skeletons, so loading is not an empty page ---------- */
+@keyframes hm-shim { from { background-position: -320px 0; } to { background-position: 320px 0; } }
+.sk {
+  background: linear-gradient(90deg, #eee 0%, #f6f6f6 40%, #eee 80%);
+  background-size: 320px 100%;
+  animation: hm-shim 1.1s linear infinite;
+}
+.sk-card { height: 244px; border: 1px solid var(--sp-border); }
+
+/* ---------- one place to turn all of it off ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .pc:hover { transform: none; }
+  .pc:hover .pc-media img { transform: none; }
+  .pc-acts { opacity: 1; transform: none; }
+  .st-card:hover { transform: none; }
+}
