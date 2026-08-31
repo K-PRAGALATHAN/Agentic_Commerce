@@ -22,7 +22,12 @@ from typing import Any, Awaitable, Callable
 from . import trace
 from .. import model
 
-MAX_STEPS = 6
+# Raised from 6. A search that misses on the first phrasing costs three steps to
+# recover from — search, list_categories, search again — and settling on a
+# product now costs one more, because the add is held to offer a step up. At six
+# the agent ran out of budget mid-recovery and told the customer it could not
+# find something the catalogue plainly has.
+MAX_STEPS = 8
 MAX_TOOL_CHARS = 3500
 
 
@@ -128,7 +133,16 @@ async def run(
                           "ok": not (isinstance(result, dict) and result.get("error"))})
             # Anything the UI should render travels beside the text, not inside it.
             if isinstance(result, dict) and "_ui" in result:
-                data.update(result.pop("_ui"))
+                for key, value in result.pop("_ui").items():
+                    # A plain update() loses data whenever two tools in the same
+                    # turn contribute to the same key — and that is the normal
+                    # case, not an edge one: settling on a product calls upsell
+                    # AND cross_sell, and both offer a card. Lists accumulate;
+                    # everything else keeps last-write-wins.
+                    if isinstance(value, list) and isinstance(data.get(key), list):
+                        data[key] = data[key] + value
+                    else:
+                        data[key] = value
 
             await trace.log(tools_client, run_id, name, args, result, latency_ms=latency,
                             status="error" if steps[-1]["ok"] is False else "ok")

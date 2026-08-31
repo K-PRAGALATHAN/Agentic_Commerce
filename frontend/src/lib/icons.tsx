@@ -19,7 +19,15 @@ export const I = {
   search: () => <svg width="16" height="16" viewBox="0 0 24 24" {...s}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>,
   bell: () => <svg width="18" height="18" viewBox="0 0 24 24" {...s}><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>,
   bag: () => <svg width="16" height="16" viewBox="0 0 24 24" {...s}><path d="M5.5 8h13l1 12H4.5z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></svg>,
-  sparkle: () => <svg width="18" height="18" viewBox="0 0 24 24" {...s}><path d="M12 3.5 13.6 9 19 10.6 13.6 12.2 12 17.7 10.4 12.2 5 10.6 10.4 9z"/><path d="M18.5 15.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg>,
+  // The assistant mark: a cluster of petals, not a star. Filled shapes with
+  // no stroke, so it keeps its weight at 15px in the composer and at 18px in
+  // the top bar. Colour comes from currentColor — the button it sits in turns
+  // orange when active, and an orange glyph on an orange ground is invisible.
+  sparkle: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <circle cx="12" cy="12" r="2.55"/><circle cx="12.00" cy="5.50" r="3.0"/><circle cx="17.63" cy="8.75" r="2.65"/><circle cx="17.63" cy="15.25" r="3.0"/><circle cx="12.00" cy="18.50" r="2.65"/><circle cx="6.37" cy="15.25" r="3.0"/><circle cx="6.37" cy="8.75" r="2.65"/>
+    </svg>
+  ),
 
   // rail controls
   chevronDown: () => <svg width="16" height="16" viewBox="0 0 24 24" {...s}><path d="m6 9 6 6 6-6"/></svg>,
@@ -69,7 +77,6 @@ export const I = {
   speaker: () => <svg width="17" height="17" viewBox="0 0 24 24" {...s}><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/><path d="M15.8 9.4a3.6 3.6 0 0 1 0 5.2"/></svg>,
   speakerOn: () => <svg width="17" height="17" viewBox="0 0 24 24" {...s}><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/><path d="M15.8 9.4a3.6 3.6 0 0 1 0 5.2M18.4 7a7.2 7.2 0 0 1 0 10"/></svg>,
   speakerOff: () => <svg width="17" height="17" viewBox="0 0 24 24" {...s}><path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/><path d="m16 9.5 4 5M20 9.5l-4 5"/></svg>,
-  asterisk: () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/></svg>,
   eyeOff: () => <svg width="15" height="15" viewBox="0 0 24 24" {...s}><path d="M3 3l18 18"/><path d="M10.6 6.1A9.9 9.9 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.2 8.3A16.6 16.6 0 0 0 2 12s3.6 6 10 6a9.7 9.7 0 0 0 4-.8"/></svg>,
   refresh: () => <svg width="18" height="18" viewBox="0 0 24 24" {...s}><path d="M20.5 11a8.5 8.5 0 1 0-.8 5"/><path d="M20.5 5v6h-6"/></svg>,
 };

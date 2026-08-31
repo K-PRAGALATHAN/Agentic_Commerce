@@ -72,10 +72,13 @@ async def _reset(client: httpx.AsyncClient, token: str, case: dict) -> None:
     for item in cart.get("items", []):
         await client.delete(f"{BACKEND}/cart/items/{item['variantId']}", headers=h)
 
-    limit_rupees = case.get("setup_spend_limit_rupees")
-    if limit_rupees is not None:
-        await client.put(f"{BACKEND}/me/preferences", headers=h,
-                         json={"spendLimitPaise": limit_rupees * 100})
+    # Always write the limit, not only when the case names one. Otherwise a case
+    # that drops it to Rs 1 to test the guardrail silently applies that limit to
+    # every case after it, and unrelated cases fail for reasons nothing in them
+    # explains.
+    limit_rupees = case.get("setup_spend_limit_rupees", 100000)
+    await client.put(f"{BACKEND}/me/preferences", headers=h,
+                     json={"spendLimitPaise": limit_rupees * 100})
 
     if case.get("setup_seed_cart"):
         products = (await client.get(f"{BACKEND}/catalog?limit=1")).json().get("products", [])
@@ -85,11 +88,18 @@ async def _reset(client: httpx.AsyncClient, token: str, case: dict) -> None:
 
 
 def _check(case: dict, reply: str, steps: list[dict]) -> tuple[bool, str]:
+    # `steps` is every tool call across every turn of the case. Tool assertions
+    # are about the conversation as a whole — a two-turn case that looks a
+    # product up on turn one and adds it on turn two has still called both.
     called = [s["tool"] for s in steps]
 
     for tool in case.get("must_call", []):
         if tool not in called:
             return False, f"expected a {tool} call, got {called or 'none'}"
+
+    for tool in case.get("must_not_call", []):
+        if tool in called:
+            return False, f"called {tool} when it must not"
 
     pat = case.get("reply_must_match")
     if pat and not re.search(pat, reply):
@@ -118,12 +128,33 @@ async def main(promote: bool) -> int:
 
         for case in CASES:
             await _reset(client, token, case)
+            # Every case gets its own conversation.
+            #
+            # Without this they all share the agent's "<user>:default" working
+            # memory, which _reset cannot clear because it lives in the agent
+            # process, not the database. Any per-conversation state — a pending
+            # confirmation, a trade-up already offered — would then leak from one
+            # case into the next, and the suite would pass or fail on the ORDER
+            # the cases happen to run in. That failure looks like flakiness, not
+            # like a bug, which is the worst kind to chase.
+            convo = str(uuid.uuid4())
+
+            # `turns` runs a real conversation and asserts on the LAST reply.
+            # Some behaviour only exists across turns — asking a second time for
+            # something the agent held back is not expressible in one message.
+            turns = case.get("turns") or [case["message"]]
             t0 = time.perf_counter()
+            body = {"reply": "", "steps": []}
+            all_steps: list[dict] = []
             try:
-                r = await client.post(f"{AGENT}/chat", headers=headers, json={"message": case["message"]})
-                body = r.json()
+                for turn in turns:
+                    r = await client.post(f"{AGENT}/chat", headers=headers,
+                                          json={"message": turn, "conversationId": convo})
+                    body = r.json()
+                    all_steps.extend(body.get("steps") or [])
             except Exception as e:
                 body = {"reply": f"<request failed: {e}>", "steps": []}
+            body["steps"] = all_steps
             latency = int((time.perf_counter() - t0) * 1000)
 
             reply = body.get("reply", "")
@@ -132,7 +163,9 @@ async def main(promote: bool) -> int:
 
             score = None
             if passed and case.get("judge"):
-                score, note = await _judge(client, case["judge"], case["message"], reply)
+                # A multi-turn case has no single "message"; judge the turn that
+                # produced the reply being scored.
+                score, note = await _judge(client, case["judge"], turns[-1], reply)
                 if score < 1.0:
                     passed, detail = False, f"judge: {note}"
 

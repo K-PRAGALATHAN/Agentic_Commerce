@@ -6,7 +6,7 @@ import { I } from '../lib/icons.js';
 import { ProductCard, type CardProduct } from './ProductCard.js';
 import {
   listen, speak, stopSpeaking, voiceSupported, speechSupported,
-  normaliseNumbers, isRisky, isConsent, type ListenHandle,
+  normaliseNumbers, isRisky, isConsent, micTrouble, type ListenHandle,
 } from '../lib/voice.js';
 import { listConvos, newConvo, upsertConvo, removeConvo, exists, onConversationsChanged, type Convo } from '../lib/conversations.js';
 
@@ -14,6 +14,19 @@ import { listConvos, newConvo, upsertConvo, removeConvo, exists, onConversations
 // field optional, which is how the two drifted apart in the first place — and
 // why handing one to the rail needed a cast rather than just working.
 interface Prod extends CardProduct { description?: string; }
+
+// The model writes markdown whether or not we ask it to, and the bubble was
+// printing the asterisks literally — "**Aster Linen Shirt**" on screen. This is
+// deliberately the smallest possible reader: bold, and nothing else. A full
+// markdown parser here would be a dependency and an injection surface for a
+// couple of asterisks.
+function rich(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') && part.length > 4
+      ? <b key={i}>{part.slice(2, -2)}</b>
+      : <span key={i}>{part}</span>,
+  );
+}
 interface Step { tool: string; args?: any; ms?: number; ok?: boolean }
 interface Msg { role: 'user' | 'assistant'; text: string; kind?: string; data?: any; steps?: Step[]; }
 
@@ -77,6 +90,10 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
   const [voiceOut, setVoiceOut] = useState(true);  // read replies aloud
   const [pending, setPending] = useState<string | null>(null); // awaiting read-back
   const micRef = useRef<ListenHandle | null>(null);
+  // Push to talk: hold the space bar. 0 when idle, 0..1 while the hold is
+  // filling. Two seconds is a long time to stare at nothing, so the progress is
+  // drawn rather than merely counted.
+  const [hold, setHold] = useState(0);
   const [qty, setQty] = useState(1);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -172,7 +189,12 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
     void ask(normalised, true);
   }
 
-  function startMic() {
+  async function startMic() {
+    // Ask the browser what is wrong BEFORE opening the recogniser, so a blocked
+    // permission or a missing device says so instead of failing silently.
+    const trouble = await micTrouble();
+    if (trouble) { notify(trouble); return; }
+
     stopSpeaking(); setSpeaking(false);   // barge-in: talking over it stops it
     setHeard(''); setPending(null);
     const h = listen({
@@ -188,9 +210,78 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
 
   function stopMic() { micRef.current?.abort(); micRef.current = null; setMicOn(false); setHeard(''); }
 
+  // The key listener below is bound once and must not capture a stale startMic.
+  // startMic reaches through handleHeard to `voiceOut`, so a listener bound
+  // before the speaker was switched off would still read the reply aloud. A ref
+  // refreshed every render keeps the shortcut pointing at the current one
+  // without re-binding window listeners on every toggle.
+  const startMicRef = useRef(startMic);
+  startMicRef.current = startMic;
+
   // Leaving the panel with the microphone live, or with a reply still being
   // read out, is the kind of thing people notice about an app once.
   useEffect(() => () => { micRef.current?.abort(); stopSpeaking(); }, []);
+
+  // --- hold space to talk ---------------------------------------------------
+  //
+  // Two seconds, deliberately. A tap would fire constantly by accident, and the
+  // microphone opening unannounced is the one mistake a voice feature cannot
+  // afford to make twice.
+  //
+  // It only arms when focus is NOT in a field. In a chat the composer usually
+  // has focus, so space types a space exactly as it should; the shortcut is for
+  // when you have clicked away or just finished reading a reply. That also keeps
+  // the preventDefault narrow — space still scrolls the page everywhere it
+  // normally would.
+  useEffect(() => {
+    if (!voiceSupported()) return;
+    const HOLD_MS = 2000;
+    let timer: number | undefined;
+    let frame: number | undefined;
+
+    const typing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+    };
+    const cancel = () => {
+      if (timer) window.clearTimeout(timer);
+      if (frame) cancelAnimationFrame(frame);
+      timer = frame = undefined;
+      setHold(0);
+    };
+
+    function onDown(e: KeyboardEvent) {
+      // `repeat` matters: holding a key fires keydown over and over, and without
+      // this every repeat would restart the timer and it would never complete.
+      if (e.code !== 'Space' || e.repeat || timer) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (typing() || micOn || busy || pending) return;
+      e.preventDefault();
+
+      const from = performance.now();
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - from) / HOLD_MS);
+        setHold(p);
+        if (p < 1) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+      timer = window.setTimeout(() => { cancel(); void startMicRef.current(); }, HOLD_MS);
+    }
+
+    const onUp = (e: KeyboardEvent) => { if (e.code === 'Space') cancel(); };
+
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    // Alt-tabbing away mid-hold must not leave a timer running that opens the
+    // microphone once the window is no longer in front of the person.
+    window.addEventListener('blur', cancel);
+    return () => {
+      cancel();
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', cancel);
+    };
+  }, [micOn, busy, pending]);
 
   async function addToCart(p: Prod, q = 1) {
     try { await api.post('/cart/items', { productId: p.id, qty: q }); notify(`Added “${p.name}” to cart`); onCartChanged(); }
@@ -279,7 +370,7 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
               <div key={i} className="sp-msg-user">{m.text}</div>
             ) : (
               <div key={i}>
-                <div className="sp-msg-ai">{m.text}</div>
+                <div className="sp-msg-ai">{rich(m.text)}</div>
 
               {/* The same steps that went to agent_runs, so what the customer
                   sees matches what was recorded. Collapsed by default. */}
@@ -304,6 +395,30 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
                       ))}
                     </div>
                   </>
+                )}
+
+                {/* Upsell and cross-sell. The agent used to name these in prose
+                    and leave the customer to picture them — no photograph, no
+                    price to compare, nothing to press. They render as the same
+                    card as everything else, with the tool's own reason as the
+                    label. */}
+                {m.data?.suggested?.length > 0 && (
+                  <div className="sp-suggest">
+                    {m.data.suggested.map((sug: Prod & { suggestReason?: string; suggestKind?: string }) => (
+                      <div key={sug.id}>
+                        <div className="sp-suggest-lbl">
+                          {sug.suggestKind === 'upsell' ? 'A better one' : 'Goes well with it'}
+                          {sug.suggestReason && <span> · {sug.suggestReason}</span>}
+                        </div>
+                        <ProductCard
+                          p={sug}
+                          onAdd={(x) => addToCart(x as Prod)}
+                          onNotify={notify}
+                          onOpen={() => onOpenProduct(sug)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {m.data?.cartTotalPaise != null && (
@@ -350,7 +465,7 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
             <b>“{pending}”</b>
           </div>
           <div className="vc-check-acts">
-            <button className="ghost" onClick={() => { setPending(null); startMic(); }}>Say it again</button>
+            <button className="ghost" onClick={() => { setPending(null); void startMic(); }}>Say it again</button>
             <button className="pd-add" onClick={() => { const t = pending; setPending(null); void ask(t, true); }}>
               Yes, go ahead
             </button>
@@ -359,6 +474,13 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
       )}
 
       <div className="sp-composer">
+        {hold > 0 && !micOn && (
+          <div className="vc-hold" role="status">
+            <span className="vc-hold-bar"><i style={{ transform: `scaleX(${hold})` }} /></span>
+            <span>Keep holding to talk…</span>
+          </div>
+        )}
+
         {micOn && (
           <div className="vc-live">
             <span className="vc-wave"><i /><i /><i /><i /></span>
@@ -381,9 +503,9 @@ export function AiPanel({ isMerchant = false, convoId, onConvoChange, onClose, o
             <button
               type="button"
               className={`vc-mic ${micOn ? 'on' : ''}`}
-              onClick={() => (micOn ? stopMic() : startMic())}
+              onClick={() => (micOn ? stopMic() : void startMic())}
               disabled={busy}
-              title={micOn ? 'Stop listening' : 'Speak to the assistant'}
+              title={micOn ? 'Stop listening' : 'Speak to the assistant — or hold the space bar'}
               aria-label={micOn ? 'Stop listening' : 'Speak to the assistant'}
               aria-pressed={micOn}
             >

@@ -7,11 +7,20 @@ backend re-checks on every write, so a hallucinated tool call cannot become an
 unauthorised action.
 """
 from .. import model, resolver
+from ..harness import memory
 from ..harness.loop import Registry, Tool
 
 
-def build(tools) -> Registry:
+def build(tools, user_id: str | None = None, run_id: str | None = None) -> Registry:
     r = Registry()
+    # Which chat this is. The trade-up hold lives in per-conversation working
+    # memory, so it survives to the next turn and no further.
+    convo = getattr(tools, "conversation_id", None)
+
+    # No identity means no gate. That is the correct direction to fail: a caller
+    # we cannot place in a conversation must never be able to hold a customer's
+    # add hostage, because nothing would ever release it.
+    gate_on = bool(user_id and run_id)
 
     def _slim(products: list[dict]) -> list[dict]:
         return [
@@ -136,16 +145,124 @@ def build(tools) -> Registry:
         c = res.get("cart", res)
         return {"moved": True, "cart": c.get("name"), "items": len(c.get("items", []))}
 
-    async def add_to_cart(product_id: str | None = None, variant_id: str | None = None,
-                          qty: int = 1, cart_id: str | None = None):
+    async def _commit_add(product_id, variant_id, qty, cart_id):
+        if gate_on:
+            memory.clear_scratch(user_id, "held_add", convo)
         cart = await tools.add_to_cart(product_id=product_id, variant_id=variant_id, qty=qty, cart_id=cart_id)
         c = cart.get("cart", cart)
         return {
+            "added": True,
             "cart": c.get("name"),
             "items": [{"name": i["name"], "variant": i.get("variantTitle"), "qty": i["qty"]} for i in c.get("items", [])],
             "total_rupees": c.get("totalPaise", 0) / 100,
             "_ui": {"cartTotalPaise": c.get("totalPaise", 0)},
         }
+
+    async def _ceiling():
+        """The most we may suggest: the customer's own spend limit.
+
+        This deliberately does NOT take a budget from the model. An earlier
+        version accepted one, and the model supplied a figure whether or not
+        anybody had said a number — 100 against an 89.99 product — which put the
+        ceiling under the next shelf and silently switched the trade-up off. A
+        hallucinated argument that disables a feature without erroring is worse
+        than no argument.
+
+        The limit is per ORDER, not per item, so using it whole is slightly
+        generous once there is something in the basket. Subtracting the cart
+        total would cost a round trip on every settle, and the ratio cap in the
+        SQL is doing the real work, so the looser reading is accepted.
+        """
+        try:
+            prefs = (await tools.get_context()).get("preferences") or {}
+            limit = prefs.get("spendLimitPaise")
+            return int(limit) if limit else None
+        except Exception:
+            return None
+
+    async def add_to_cart(product_id: str | None = None, variant_id: str | None = None,
+                          qty: int = 1, cart_id: str | None = None):
+        """Add an item - or hold it once, to show the customer the next step up.
+
+        Modelled on `checkout`, which does not fail when it is over the spend
+        limit but returns `gated` for the model to explain. Here, the first time
+        a customer settles on something the add is HELD and one alternative comes
+        back instead. Ask again and it goes through: a gate that cannot be walked
+        past is not a suggestion, it is a refusal.
+        """
+        # Topping up a quantity is not settling on a product, and a gift list is a
+        # poor place to sell. Neither is gated.
+        #
+        # "A named cart" is not the same as "cart_id was passed": the model often
+        # passes the universal cart's own id, and treating that as a named list
+        # would have skipped the gate on ordinary adds. Check what it points at.
+        named_cart = False
+        if cart_id:
+            try:
+                named_cart = any(c["id"] == cart_id and not c.get("isDefault")
+                                 for c in await tools.list_carts())
+            except Exception:
+                named_cart = True  # cannot tell: leave the customer alone
+        if not gate_on or qty > 1 or named_cart:
+            return await _commit_add(product_id, variant_id, qty, cart_id)
+
+        anchor = product_id
+        if not anchor and variant_id:
+            # Variant adds are the norm for anything with sizes; without this the
+            # gate would have a hole exactly where those products live.
+            anchor = (await tools.variant(variant_id)).get("productId")
+        if not anchor:
+            return await _commit_add(product_id, variant_id, qty, cart_id)
+
+        key = "pitched:" + anchor
+        held = memory.get_scratch(user_id, key, None, convo)
+
+        # Same turn, already held. Return the identical answer and say so.
+        #
+        # This keys on run_id ALONE, never on which item was named. A model that
+        # wants to push through can re-call with product_id where it first sent
+        # variant_id, and any identity check would wave it straight through.
+        if held and held.get("run_id") == run_id:
+            return dict(held["payload"],
+                        note="Still held this turn. Stop calling add_to_cart and put the "
+                             "choice to the customer - they have to ask again.")
+
+        # A later turn, and this was held: they came back for it. Honour that
+        # without argument, whatever they named.
+        if held:
+            memory.clear_scratch(user_id, key, convo)
+            return await _commit_add(product_id, variant_id, qty, cart_id)
+
+        step = await tools.upsell(anchor, ceiling_paise=await _ceiling())
+        if not step:
+            # Top of the ladder, or nothing within reach of the price. There is
+            # no case to make, so none is made.
+            return await _commit_add(product_id, variant_id, qty, cart_id)
+
+        base = await tools.product_detail(anchor)
+        payload = {
+            "held": True,
+            "added": False,
+            "cart_unchanged": True,
+            "held_item": {"product_id": product_id, "variant_id": variant_id,
+                          "qty": qty, "name": base.get("name")},
+            "step_up": {"id": step["id"], "name": step["name"],
+                        "price_rupees": step["pricePaise"] / 100,
+                        "rating": step.get("rating"), "why": step.get("reason")},
+            # Rendered by the same card path as search results. "upsell" is the
+            # exact string AiPanel labels on - do not invent a new kind.
+            "_ui": {"suggested": [dict(step, suggestReason=step.get("reason"),
+                                       suggestKind="upsell")]},
+        }
+        # Mark the SUGGESTION as pitched too, so accepting it adds it straight
+        # away rather than triggering a trade-up on the trade-up.
+        for k in (anchor, step["id"]):
+            memory.set_scratch(user_id, "pitched:" + k, {"run_id": run_id, "payload": payload}, convo)
+        # A single flag checkout can read. The per-product keys answer "have we
+        # pitched this?"; this one answers "is the customer mid-decision?", and
+        # only the second question is checkout's business.
+        memory.set_scratch(user_id, "held_add", base.get("name") or "that item", convo)
+        return payload
 
     async def view_cart(cart_id: str | None = None):
         c = await tools.get_cart(cart_id)
@@ -158,6 +275,19 @@ def build(tools) -> Registry:
 
     async def checkout(confirm_over_limit: bool = False, discount_code: str | None = None,
                        cart_id: str | None = None):
+        # Refuse while an add is held. The customer believes they are buying the
+        # thing they just named; it is not in the basket, so this would charge
+        # them for whatever else is. The prompt says not to, and the model does
+        # anyway when asked to "add it and check out" in one breath — which is
+        # exactly why this is a check and not a sentence.
+        pending = memory.get_scratch(user_id, "held_add", None, convo) if gate_on else None
+        if pending:
+            return {
+                "blocked": True,
+                "reason": f"{pending} has not been added yet - you offered them something "
+                          f"else first and they have not answered. Settle that before buying.",
+                "cart_unchanged": True,
+            }
         res = await tools.checkout(confirm_over_limit=confirm_over_limit,
                                    discount_code=discount_code, cart_id=cart_id)
         if res.get("gated"):
@@ -186,12 +316,23 @@ def build(tools) -> Registry:
         u = await tools.upsell(product_id)
         if not u:
             return {"upsell": None, "note": "nothing better in this category"}
-        return {"upsell": {"id": u["id"], "name": u["name"],
-                           "price_rupees": u["pricePaise"] / 100,
-                           "rating": u.get("rating"), "why": u.get("reason")}}
+        return {
+            "upsell": {"id": u["id"], "name": u["name"],
+                       "price_rupees": u["pricePaise"] / 100,
+                       "rating": u.get("rating"), "why": u.get("reason")},
+            # The card travels out-of-band, exactly as search results do. Naming
+            # a product in prose and leaving the customer to picture it is the
+            # weakest possible way to suggest something: no photograph, no
+            # rating, and nothing to press.
+            "_ui": {"suggested": [{**u, "suggestReason": u.get("reason"), "suggestKind": "upsell"}]},
+        }
 
     async def cross_sell(product_id: str):
         """Things that go WITH this product.
+
+        Silent while an add is held: the customer is mid-decision about which of
+        two things to buy, and answering a question they have not reached yet is
+        how a helpful assistant turns into a pushy one.
 
         The backend answers from evidence — co-purchase, co-view, a curated map —
         and returns NOTHING when nothing clears the bar. On a young catalogue that
@@ -200,13 +341,22 @@ def build(tools) -> Registry:
         should: a laptop paired with a lunch box costs more trust than a missed
         suggestion.
         """
+        if gate_on and memory.get_scratch(user_id, "held_add", None, convo):
+            return {"goes_well_with": [],
+                    "note": "An add is still held - settle that with the customer first."}
+
         items = await tools.cross_sell(product_id)
         if items:
-            return {"goes_well_with": [
-                {"id": p["id"], "name": p["name"], "price_rupees": p["pricePaise"] / 100,
-                 "category": p.get("category"), "why": p.get("reason")}
-                for p in items
-            ]}
+            return {
+                "goes_well_with": [
+                    {"id": p["id"], "name": p["name"], "price_rupees": p["pricePaise"] / 100,
+                     "category": p.get("category"), "why": p.get("reason")}
+                    for p in items
+                ],
+                "_ui": {"suggested": [
+                    {**p, "suggestReason": p.get("reason"), "suggestKind": "cross"} for p in items
+                ]},
+            }
 
         if not model.is_available():
             return {"goes_well_with": []}
@@ -250,12 +400,16 @@ def build(tools) -> Registry:
             pick = next((p for p in pool if p["id"] == data.get("id")), None)
             if not pick:
                 return {"goes_well_with": []}
-            return {"goes_well_with": [{
-                "id": pick["id"], "name": pick["name"],
-                "price_rupees": pick["pricePaise"] / 100,
-                "category": pick.get("category"),
-                "why": str(data.get("why", ""))[:120] or f'goes well with {base.get("name")}',
-            }]}
+            why = str(data.get("why", ""))[:120] or f'goes well with {base.get("name")}'
+            return {
+                "goes_well_with": [{
+                    "id": pick["id"], "name": pick["name"],
+                    "price_rupees": pick["pricePaise"] / 100,
+                    "category": pick.get("category"),
+                    "why": why,
+                }],
+                "_ui": {"suggested": [{**pick, "suggestReason": why, "suggestKind": "cross"}]},
+            }
         except Exception:
             return {"goes_well_with": []}
 
@@ -313,7 +467,11 @@ def build(tools) -> Registry:
 
     r.add(Tool("add_to_cart",
                "Add an item to the cart. Pass variant_id when the product has variants, "
-               "otherwise product_id and the default variant is used.",
+               "otherwise product_id and the default variant is used. The FIRST time a "
+               "customer settles on something this may come back with held: true and one "
+               "alternative a step up in price, INSTEAD of adding - that is a normal "
+               "answer, not an error. Put it to them; if they want the original, call "
+               "this again and it will go through.",
                {"type": "object", "properties": {
                    "product_id": txt("Product id"), "variant_id": txt("Variant id (preferred)"),
                    "qty": {"type": "integer", "description": "Quantity, default 1"},

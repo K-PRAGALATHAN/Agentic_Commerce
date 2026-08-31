@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, rupees } from '../lib/api.js';
 import { I } from '../lib/icons.js';
-import { catLabel, toggleWishlist, type CardProduct } from './ProductCard.js';
+import { catLabel, type CardProduct } from './ProductCard.js';
+import { ensureLoaded, isSaved, onWishlistChanged, toggleWishlist } from '../lib/wishlist.js';
 import { cartsChanged } from '../lib/cartEvents.js';
 import { runCheckout } from '../lib/checkout.js';
 
@@ -43,6 +44,7 @@ export function ProductPanel({ product, onClose, onCartChanged, notify }: Props)
   const [variant, setVariant] = useState('');
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setP(product); setShot(0); setQty(1); setVariant('');
@@ -59,7 +61,10 @@ export function ProductPanel({ product, onClose, onCartChanged, notify }: Props)
     // Viewing from the assistant counts as a view, exactly as it does on the
     // product page — it is the same signal feeding the same two features.
     api.post(`/catalog/${product.id}/view`).catch(() => {});
-    return () => { live = false; };
+    ensureLoaded();
+    setSaved(isSaved(product.id));
+    const off = onWishlistChanged(() => setSaved(isSaved(product.id)));
+    return () => { live = false; off(); };
   }, [product.id]);
 
   const gallery = (p.images?.length ? p.images.map((i) => i.url) : [p.image]).filter(Boolean);
@@ -183,9 +188,12 @@ export function ProductPanel({ product, onClose, onCartChanged, notify }: Props)
           <button className="pd-buy-now" disabled={busy || stock <= 0} onClick={() => add('pay')}>
             Buy now
           </button>
-          <button className="pd-heart" title="Save to wishlist" aria-label="Save to wishlist"
+          <button className={`pd-heart ${saved ? 'on' : ''}`}
+            title={saved ? 'Remove from your wishlist' : 'Save to wishlist'}
+            aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+            aria-pressed={saved}
             onClick={async () => { try { notify(await toggleWishlist(p)); } catch (e: any) { notify(e.message); } }}>
-            {I.heart()}
+            {saved ? I.heartOn() : I.heart()}
           </button>
         </div>
 

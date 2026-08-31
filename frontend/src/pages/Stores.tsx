@@ -41,11 +41,8 @@ export function Stores() {
         {(stores ?? []).map((s) => (
           <button key={s.slug} className="st-card" onClick={() => nav(`/stores/${s.slug}`)}>
             <div className="st-top">
-              <span className="st-logo">{s.logo || '🏬'}</span>
-              <span style={{ minWidth: 0 }}>
-                <b>{s.storeName}</b>
-                <span>{s.location || 'India'} · ★ {s.rating.toFixed(1)}</span>
-              </span>
+              <b>{s.storeName}</b>
+              <span>{s.location || 'India'}</span>
             </div>
             <div className="st-tag">{s.tagline || 'No description yet.'}</div>
             <div className="st-stats">

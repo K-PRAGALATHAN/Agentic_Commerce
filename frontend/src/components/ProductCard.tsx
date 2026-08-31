@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, rupees } from '../lib/api.js';
 import { I } from '../lib/icons.js';
+import { ensureLoaded, isSaved, onWishlistChanged, toggleWishlist } from '../lib/wishlist.js';
 
 // One product card, used by the storefront, the search results and every store
 // page. It was duplicated across three files before this; the discount maths and
@@ -26,19 +27,10 @@ export interface CartOpt { id: string; name: string; isDefault: boolean; }
 export const catLabel = (c: string) =>
   (c || '').replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 
-// A wishlist is not a new concept here — it is a named cart, which the multi-cart
-// work already supports end to end (the assistant can read it, and it can be
-// checked out). Inventing a separate table for it would have been the wrong
-// instinct: a saved list of things you might buy IS a cart.
-export const WISHLIST = 'Wishlist';
-
-export async function toggleWishlist(p: CardProduct): Promise<string> {
-  const { carts } = await api.get<{ carts: CartOpt[] }>('/carts');
-  let list = carts.find((c) => c.name.toLowerCase() === WISHLIST.toLowerCase());
-  if (!list) list = (await api.post<{ cart: CartOpt }>('/carts', { name: WISHLIST })).cart;
-  await api.post('/cart/items', { productId: p.id, qty: 1, cartId: list.id });
-  return `Saved “${p.name}” to your wishlist`;
-}
+// The wishlist lives in lib/wishlist.ts, which owns membership for the whole
+// app. It used to be a local add-only helper here, which is why nothing could
+// unsave and why the heart forgot what was saved the moment you reloaded.
+export { toggleWishlist } from '../lib/wishlist.js';
 
 interface Props {
   p: CardProduct;
@@ -54,7 +46,14 @@ interface Props {
 export function ProductCard({ p, carts = [], onAdd, onNotify, onOpen }: Props) {
   const nav = useNavigate();
   const [pick, setPick] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // Read from the shared map, not local state, so a product saved on the
+  // product page shows as saved on the card behind it.
+  const [saved, setSaved] = useState(() => isSaved(p.id));
+  useEffect(() => {
+    ensureLoaded();
+    setSaved(isSaved(p.id));
+    return onWishlistChanged(() => setSaved(isSaved(p.id)));
+  }, [p.id]);
 
   const off = p.compareAtPaise && p.compareAtPaise > p.pricePaise
     ? Math.round(((p.compareAtPaise - p.pricePaise) / p.compareAtPaise) * 100)
@@ -65,9 +64,7 @@ export function ProductCard({ p, carts = [], onAdd, onNotify, onOpen }: Props) {
   async function save(e: React.MouseEvent) {
     e.stopPropagation();
     try {
-      const msg = await toggleWishlist(p);
-      setSaved(true);
-      onNotify?.(msg);
+      onNotify?.(await toggleWishlist(p));
     } catch (err: any) { onNotify?.(err.message); }
   }
 
@@ -86,8 +83,9 @@ export function ProductCard({ p, carts = [], onAdd, onNotify, onOpen }: Props) {
           <button
             className={`pc-act ${saved ? 'on' : ''}`}
             onClick={save}
-            title={saved ? 'Saved to your wishlist' : 'Save to wishlist'}
-            aria-label="Save to wishlist"
+            title={saved ? 'Remove from your wishlist' : 'Save to wishlist'}
+            aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+            aria-pressed={saved}
           >
             {saved ? I.heartOn() : I.heart()}
           </button>

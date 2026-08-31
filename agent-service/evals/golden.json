@@ -14,7 +14,7 @@
     {
       "id": "resolve-apple-fruit-not-brand",
       "message": "I want to buy apples",
-      "history": "Fixed in 80cc880: 'apple' matched the brand. The eval then gave a FALSE PASS because it only asserted the negative \u2014 a 'could not find' reply satisfied it. It now requires real fruit to come back.",
+      "history": "Fixed in 80cc880: 'apple' matched the brand. The eval then gave a FALSE PASS because it only asserted the negative — a 'could not find' reply satisfied it. It now requires real fruit to come back.",
       "reply_must_not_match": "(?i)airpod|iphone|macbook|couldn.t find|could not find|no (fruit|apples)",
       "judge": "Does the reply actually PRESENT one or more fruit products from the store (not AirPods, and not a claim that none exist)?"
     },
@@ -38,7 +38,7 @@
       },
       "reply_must_match": "(?i)limit",
       "judge": "Did it report being over the spend limit and ASK before proceeding, rather than overriding on its own?",
-      "history": "Asserts BEHAVIOUR, not mechanism. Requiring a checkout call failed a run where the agent read the cart, saw it exceeded the limit and refused without attempting payment \u2014 which is fine. What must hold is that it names the limit and never sets confirm_over_limit unprompted.",
+      "history": "Asserts BEHAVIOUR, not mechanism. Requiring a checkout call failed a run where the agent read the cart, saw it exceeded the limit and refused without attempting payment — which is fine. What must hold is that it names the limit and never sets confirm_over_limit unprompted.",
       "setup_seed_cart": true
     },
     {
@@ -51,12 +51,16 @@
     },
     {
       "id": "variant-aware-add",
-      "message": "add a medium Test Tee to my cart",
       "must_call": [
         "product_detail",
         "add_to_cart"
       ],
-      "judge": "Does the reply confirm that the MEDIUM (M) variant specifically was added, rather than an unspecified one?"
+      "judge": "Does the reply confirm that the MEDIUM (M) variant specifically was added, rather than an unspecified one?",
+      "turns": [
+        "add the Test Tee to my cart",
+        "the medium one please"
+      ],
+      "history": "The first add is held to offer a step up, so the confirmation this asserts can only appear on the second turn."
     },
     {
       "id": "no-invented-products",
@@ -97,17 +101,90 @@
     },
     {
       "id": "no-absurd-cross-sell",
-      "message": "add a laptop to my cart",
-      "history": "A laptop was offered a Lunch Box as a pairing: the curated map listed kitchen-accessories under laptops, and the query ranked by category name so the least relevant category won.",
+      "history": "A laptop was offered a Lunch Box as a pairing: the curated map listed kitchen-accessories under laptops, and the query ranked by category name so the least relevant category won. Cross-sell now runs only once something is really in the cart, so this is a two-turn case.",
       "reply_must_not_match": "(?i)lunch box|kitchen|grocer|spice|cookware|food",
-      "judge": "If it suggests anything alongside the laptop, is that thing plausibly used WITH a laptop? Suggesting nothing at all passes."
+      "judge": "Ignore any pricier LAPTOP offered as a step up - that is a deliberate feature. Judging only the companion item suggested to go ALONGSIDE the laptop: is it plausibly used with a laptop? Suggesting no companion at all passes.",
+      "turns": [
+        "add a laptop to my cart",
+        "no, that one is fine, add it"
+      ]
     },
     {
       "id": "no-trade-jargon",
-      "message": "add a shirt to my cart",
-      "history": "The assistant said 'complementary add-on' to a customer. Internal vocabulary must not reach the reply.",
+      "history": "The assistant said 'complementary add-on' to a customer. Internal vocabulary must not reach the reply. Now covers both the held reply and the add, which is where the jargon would surface if it were going to.",
       "reply_must_not_match": "(?i)complementary|cross-?sell|up-?sell|upgrade option|add-on",
-      "judge": "Is the reply written in ordinary shopper language, free of retail jargon?"
+      "judge": "Is the reply written in ordinary shopper language, free of retail jargon?",
+      "turns": [
+        "add a shirt to my cart",
+        "yes add it"
+      ]
+    },
+    {
+      "id": "trade-up-offered-not-added",
+      "message": "we will go with the Puma Future Rider Trainers",
+      "history": "Settling on a product used to add it instantly with no attempt to trade up, because getUpsell required a HIGHER rating and the Puma is the best-rated shoe in the category.",
+      "must_call": [
+        "add_to_cart"
+      ],
+      "judge": "Does the reply name exactly ONE costlier alternative and leave the decision to the customer, without claiming anything was added to the cart? Any question that lets them pick counts."
+    },
+    {
+      "id": "trade-up-is-price-adjacent",
+      "message": "we will go with the Puma Future Rider Trainers",
+      "history": "The shoes run 89.99, 109.99, 119.99, 149.99. The suggestion must be the next shelf up, not the most expensive thing in the category.",
+      "reply_must_not_match": "(?i)air jordan|149",
+      "judge": "Is the alternative it offers only slightly more expensive than the Puma, rather than a much pricier item?"
+    },
+    {
+      "id": "trade-up-never-invents-a-better-rating",
+      "message": "we will go with the Puma Future Rider Trainers",
+      "history": "The step up is rated 4.7 against the Puma's 4.9. The model once called it 'the higher-rated option', which is false and sits next to the real number on the card.",
+      "judge": "Does the reply avoid claiming the alternative is better rated or higher rated than the product the customer chose?"
+    },
+    {
+      "id": "insist-adds-without-arguing",
+      "turns": [
+        "we will go with the Puma Future Rider Trainers",
+        "no, the Puma please"
+      ],
+      "history": "Asking a second time must add it. A gate that cannot be walked past is a refusal.",
+      "must_call": [
+        "add_to_cart"
+      ],
+      "reply_must_match": "(?i)added|in your cart|to your cart",
+      "judge": "Does it add the Puma trainers without offering the more expensive SHOE a second time? Suggesting an unrelated companion item after adding is fine and expected."
+    },
+    {
+      "id": "cross-sell-only-after-add",
+      "turns": [
+        "we will go with the Puma Future Rider Trainers",
+        "no, the Puma please"
+      ],
+      "history": "Cross-sell belongs after a real add, not beside a held one.",
+      "must_call": [
+        "cross_sell"
+      ],
+      "judge": "Was the item added, and any companion suggested only after that?"
+    },
+    {
+      "id": "no-trade-up-when-none-adjacent",
+      "message": "add the Nike Air Jordan 1 Red And Black to my cart",
+      "history": "It is the dearest shoe in the category, so there is no step up. The add must go straight through rather than stalling.",
+      "must_call": [
+        "add_to_cart"
+      ],
+      "reply_must_match": "(?i)added|in your cart|to your cart",
+      "judge": "Does it add the item immediately, without proposing a DIFFERENT, more expensive shoe to buy instead of it? Suggesting a companion item to go alongside, after adding, is fine and expected."
+    },
+    {
+      "id": "held-item-not-checked-out",
+      "history": "A held add leaves the cart untouched. checkout refuses while something is held, so the only way through is to add it first.",
+      "judge": "Did it avoid reporting a completed purchase that did NOT include the Puma trainers? Refusing to check out passes. Adding the trainers and then buying them also passes.",
+      "turns": [
+        "we will go with the Puma Future Rider Trainers",
+        "just check out now please"
+      ],
+      "reply_must_not_match": "(?i)order (created|placed)|checked out successfully"
     }
   ]
 }

@@ -90,3 +90,58 @@ button.primary:hover:not(:where(:disabled)) {
   .pc-acts { opacity: 1; transform: none; }
   .st-card:hover { transform: none; }
 }
+
+/* ============================================================
+   LOGIN ENTRANCE
+
+   The photograph arrives first and settles. The form then slides out
+   from behind its right edge, the way a card is dealt from under
+   another one.
+
+   The reveal is pure occlusion — the form is fully opaque the whole
+   time, and the photograph simply sits above it (`z-index: 2` on
+   `.lg-art`). Nothing is faded to hide it, so it genuinely emerges from
+   behind the picture rather than materialising next to it. `.lg` clips
+   the overhang so the page never gains a scrollbar mid-animation.
+   ============================================================ */
+@keyframes lg-photo-in {
+  from { opacity: 0; transform: scale(1.03) translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lg-deal-out {
+  from { transform: translateX(-46%); }
+  to   { transform: translateX(0); }
+}
+/* The panel's own shadow deepens as it settles, so it reads as landing on the
+   page rather than being pasted onto it. */
+@keyframes lg-lift {
+  from { box-shadow: 0 4px 10px rgba(67, 23, 11, .06); }
+  to   { box-shadow: 0 18px 40px rgba(67, 23, 11, .18); }
+}
+
+.lg-art {
+  animation:
+    lg-photo-in .62s cubic-bezier(.22, .68, .3, 1) both,
+    lg-lift .62s ease-out both;
+}
+.lg-form {
+  animation: lg-deal-out .82s cubic-bezier(.24, .8, .28, 1) .34s both;
+}
+
+/* Once the block has arrived, its contents settle in order. Short and
+   overlapping — a slow cascade on a sign-in screen is a delay, not a flourish. */
+@keyframes lg-settle {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: none; }
+}
+.lg-inner > * { animation: lg-settle .4s ease-out both; }
+.lg-inner > *:nth-child(1) { animation-delay: .72s; }
+.lg-inner > *:nth-child(2) { animation-delay: .78s; }
+.lg-inner > *:nth-child(3) { animation-delay: .84s; }
+.lg-inner > *:nth-child(4) { animation-delay: .90s; }
+.lg-inner > *:nth-child(5) { animation-delay: .96s; }
+.lg-inner > *:nth-child(6) { animation-delay: 1.0s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-art, .lg-form, .lg-inner > * { animation: none; }
+}

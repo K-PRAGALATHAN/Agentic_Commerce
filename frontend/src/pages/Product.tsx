@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, rupees } from '../lib/api.js';
 import { I } from '../lib/icons.js';
-import { ProductCard, catLabel, toggleWishlist, type CardProduct, type CartOpt } from '../components/ProductCard.js';
+import { ProductCard, catLabel, type CardProduct, type CartOpt } from '../components/ProductCard.js';
+import { ensureLoaded, isSaved, onWishlistChanged, toggleWishlist } from '../lib/wishlist.js';
 import { cartsChanged } from '../lib/cartEvents.js';
 
 // The product page.
@@ -39,6 +40,7 @@ export function Product() {
   const [also, setAlso] = useState<CardProduct[]>([]);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const say = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 2200); };
 
@@ -59,6 +61,8 @@ export function Product() {
     // the page the customer is trying to read.
     api.post(`/catalog/${id}/view`).catch(() => {});
     api.get<{ carts: CartOpt[] }>('/carts').then((r) => setCarts(r.carts)).catch(() => {});
+    ensureLoaded();
+    setSaved(isSaved(id));
     // Returns [] whenever nothing clears the relevance bar — that is a real
     // answer, and the section simply does not render.
     api.get<{ crossSell: (CardProduct & { reason?: string })[] }>(`/catalog/${id}/cross-sell`)
@@ -230,12 +234,13 @@ export function Product() {
               Buy now
             </button>
             <button
-              className="pd-heart"
-              title="Save to wishlist"
-              aria-label="Save to wishlist"
+              className={`pd-heart ${saved ? 'on' : ''}`}
+              title={saved ? 'Remove from your wishlist' : 'Save to wishlist'}
+              aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+              aria-pressed={saved}
               onClick={async () => { try { say(await toggleWishlist(p)); } catch (e: any) { say(e.message); } }}
             >
-              {I.heart()}
+              {saved ? I.heartOn() : I.heart()}
             </button>
           </div>
 

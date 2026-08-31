@@ -82,7 +82,11 @@ agentRouter.post(
 agentRouter.get(
   '/catalog/:id/upsell',
   asyncHandler(async (req, res) => {
-    const s = await getUpsell(req.params.id);
+    // The agent passes a ceiling when the customer named a budget or has a
+    // spend limit, so a trade-up is never waved at someone who already said
+    // what they are willing to pay.
+    const ceiling = req.query.ceilingPaise ? Number(req.query.ceilingPaise) : undefined;
+    const s = await getUpsell(req.params.id, { ceilingPaise: Number.isFinite(ceiling!) ? ceiling : undefined });
     res.json({ upsell: s ? { ...s.product, reason: s.reason, via: s.via } : null });
   }),
 );

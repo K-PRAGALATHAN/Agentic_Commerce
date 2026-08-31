@@ -356,7 +356,6 @@ a { color: var(--br-600); }
 .sp-rail-checkout button:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }
 .sp-send { background: var(--br-500); border-color: var(--br-500); }
 .sp-send:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }
-.sp-composer:focus-within { border-color: var(--br-300); box-shadow: 0 0 0 3px rgba(232, 85, 45, .13); }
 .ai-why-toggle { color: var(--br-600); }
 
 /* Merchant console: the same ramp, so the two halves of the product feel
@@ -387,11 +386,16 @@ a { color: var(--br-600); }
   gap: 26px;
   padding: 22px;
   background: #fff;
+  /* The form starts tucked behind the photograph, well outside its own column.
+     Without this the entrance animation would give the page a horizontal
+     scrollbar for the half-second it is running. */
+  overflow: hidden;
 }
 
 /* ---------- left panel ---------- */
 .lg-art {
   position: relative;
+  z-index: 2;
   overflow: hidden;
   border-radius: 22px;
   padding: 34px;
@@ -427,7 +431,6 @@ a { color: var(--br-600); }
 .lg-form { display: grid; place-items: center; padding: 20px 12px; }
 .lg-inner { width: 100%; max-width: 336px; }
 
-.lg-star { display: block; color: var(--br-500); margin-bottom: 16px; line-height: 0; }
 .lg-inner h1 {
   margin: 0 0 6px;
   font-size: 29px;
@@ -1176,3 +1179,211 @@ a { color: var(--br-600); }
   display: block;
   filter: saturate(1.05) contrast(1.03);
 }
+
+/* ============================================================
+   THE ASSISTANT MARK
+
+   Orange wherever it sits on a neutral ground. The one exception is
+   the top-bar button in its active state, which is itself orange — an
+   orange glyph on an orange ground is a blank button.
+   ============================================================ */
+.sp-top-btn.ai svg { color: var(--br-400); }
+.sp-top-btn.ai:hover:not(:where(:disabled)) svg { color: var(--br-300); }
+.sp-top-btn.ai.on svg { color: #fff; }
+
+.ai-dot svg { color: var(--br-500); }
+.hm-eyebrow svg { color: var(--br-500); }
+
+/* The petals are filled circles, so they hold their weight small — but a
+   little breathing room stops the cluster reading as a smudge at 15px. */
+.ai-dot svg, .hm-eyebrow svg { width: 15px; height: 15px; }
+
+/* ============================================================
+   COMPOSER — one bar, nothing around it
+
+   Three things were wrong with the old one:
+     * the container carried a top border, and a focus rule I had put on
+       the container rather than the field lit it orange right across
+       the panel;
+     * the field kept its own rounded outline inside the bar, so there
+       were two concentric pills;
+     * the assistant mark sat on a gradient disc that had nothing to do
+       with the rest of the palette.
+
+   Now: a single soft pill, the mark as a bare orange glyph, and the
+   controls as quiet circles on the right.
+   ============================================================ */
+.sp-composer {
+  border-top: 0;
+  background: transparent;
+  padding: 10px 16px 18px;
+}
+.sp-composer form {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px 6px 14px;
+  border-radius: 999px;
+  background: #faf7f5;
+  border: 1px solid #eae1dc;
+  box-shadow: none;
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.sp-composer form:focus-within {
+  background: #fff;
+  border-color: var(--br-300);
+  box-shadow: 0 0 0 3px rgba(232, 85, 45, .12);
+}
+
+/* The mark, not a badge. No disc, no gradient — just the petals. */
+.sp-composer .ai-dot {
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  background: none;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--br-500);
+  margin-right: 2px;
+}
+
+/* The field is the bar. Every border, ground and inset it might inherit from
+   the base input styles is cleared here, so there is exactly one pill. */
+.sp-composer input,
+.sp-composer input:focus {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 2px;
+  border: 0;
+  outline: none;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+.sp-composer input::placeholder { color: #a99f99; }
+
+/* Mic and speaker sit flush in the bar rather than looking bolted on. */
+.sp-composer .vc-mic,
+.sp-composer .vc-spk {
+  width: 30px; height: 30px; flex: 0 0 30px;
+  background: transparent;
+  border: 0;
+  color: var(--ink-2);
+}
+.sp-composer .vc-mic:hover:not(:where(:disabled)),
+.sp-composer .vc-spk:hover:not(:where(:disabled)) {
+  background: var(--br-50); color: var(--br-600);
+}
+.sp-composer .vc-spk.on { background: var(--br-50); color: var(--br-600); }
+.sp-composer .vc-mic.on { background: var(--br-500); color: #fff; }
+
+.sp-send {
+  width: 30px; height: 30px; flex: 0 0 30px;
+  background: var(--br-500); border: 0; color: #fff;
+}
+.sp-send:hover:not(:where(:disabled)) { background: var(--br-600); }
+.sp-send:disabled { background: #e6ded9; color: #b3a8a2; }
+
+/* The full-height assistant view already removes the border; keep its wider
+   padding but inherit everything else from above. */
+.sp-chat .sp-composer { padding: 10px 24px 22px; }
+
+/* ============================================================
+   SUGGESTIONS IN THE CHAT
+
+   One card, not a grid — an upsell is a single alternative and a
+   cross-sell is one companion. Sized narrower than a search result so
+   it reads as an aside to the reply above it rather than a new set of
+   results.
+   ============================================================ */
+.sp-suggest { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.sp-suggest > div { width: 190px; max-width: 100%; }
+.sp-suggest-lbl {
+  font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--br-600); margin-bottom: 6px;
+}
+.sp-suggest-lbl span {
+  font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--sp-muted);
+}
+
+/* ============================================================
+   HOLD TO TALK
+
+   Two seconds of nothing happening reads as a broken shortcut, so the
+   hold draws itself filling. The bar is a scaleX transform rather than a
+   width so it runs on the compositor and cannot stutter while the rest
+   of the panel is busy.
+   ============================================================ */
+.vc-hold {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 13px; margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--br-50); border: 1px solid var(--br-100);
+  font-size: 12.5px; font-weight: 600; color: var(--br-700);
+}
+.vc-hold-bar {
+  flex: 1; height: 4px; border-radius: 2px;
+  background: var(--br-100); overflow: hidden;
+}
+.vc-hold-bar i {
+  display: block; height: 100%; width: 100%;
+  border-radius: 2px; background: var(--br-500);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+/* ============================================================
+   STORE CARDS — name, description, three figures
+
+   The emoji tile is gone: it was a placeholder for a logo nobody has
+   uploaded, and a row of identical pastel squares carried no
+   information. Square corners here, deliberately — these are data
+   cards, and the rounding was borrowed from the product cards where a
+   photograph actually needs it.
+
+   The three figures share the row evenly, so PRODUCTS sits left, SOLD
+   centres and RATING lands hard right.
+   ============================================================ */
+.st-card, .st-hero { border-radius: 0; }
+.st-card { gap: 10px; padding: 16px 18px 14px; }
+
+.st-top { display: block; }
+.st-top b { display: block; font-size: 15px; font-weight: 650; color: var(--ink); line-height: 1.3; }
+.st-top > span { display: block; margin-top: 2px; font-size: 11.5px; color: var(--sp-muted); }
+
+.st-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  align-items: end;
+}
+.st-stats > div:nth-child(2) { text-align: center; }
+.st-stats > div:nth-child(3) { text-align: right; }
+
+/* The hero on a single store page keeps the same alignment so the two
+   screens agree with each other. */
+.st-hero .st-stats { min-width: 340px; }
+.st-hero .st-logo { display: none; }
+
+/* ============================================================
+   PRICE
+
+   Black, not brand orange. Orange is the accent for things you can act
+   on — the buttons, the links, the mark. A price is information, and
+   painting it the same colour as the call to action made every card
+   look like it had two buttons.
+   ============================================================ */
+.pc-price b, .pd-price b { color: var(--ink); }
+.pd-save { color: var(--br-700); }
+
+/* A saved item reads as saved everywhere the heart appears. */
+.pd-heart.on {
+  background: var(--br-500); border-color: var(--br-500); color: #fff;
+}
+.pd-heart.on:hover:not(:where(:disabled)) { background: var(--br-600); border-color: var(--br-600); }

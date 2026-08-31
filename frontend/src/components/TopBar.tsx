@@ -65,7 +65,7 @@ export function TopBar({ chatOpen, panel, onToggleChat, onTogglePanel }: Props) 
         {/* Both roles get an assistant. They are different agents behind the
             same button: the merchant's has no cart and no way to buy. */}
         <button
-          className={`sp-top-btn ${chatOpen ? 'on' : ''}`}
+          className={`sp-top-btn ai ${chatOpen ? 'on' : ''}`}
           onClick={onToggleChat}
           title={isMerchant ? 'Store assistant' : 'Shopping assistant'}
           aria-pressed={chatOpen}

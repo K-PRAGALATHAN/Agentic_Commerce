@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCatalog, getProduct } from '../../../application/catalog.js';
+import { getCatalog, getProduct, getVariant } from '../../../application/catalog.js';
 import { listWiki } from '../../../application/wiki.js';
 import { listCollections } from '../../../application/collections.js';
 import { personalisedRows, recordView } from '../../../application/storefront.js';
@@ -82,6 +82,19 @@ catalogRouter.get(
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     });
     res.json({ products });
+  }),
+);
+
+// Which product does this variant belong to? The agent adds by variant when a
+// product has sizes, and anything reasoning about the PRODUCT — a trade-up, a
+// cross-sell — needs to get back from one to the other. Declared before
+// /catalog/:id so 'variant' is not swallowed as a product id.
+catalogRouter.get(
+  '/catalog/variant/:variantId',
+  asyncHandler(async (req, res) => {
+    const v = await getVariant(req.params.variantId);
+    res.json({ variant: { id: v.id, productId: v.productId, title: v.title,
+                          pricePaise: v.pricePaise, stock: v.stock, sku: v.sku } });
   }),
 );
 

@@ -186,11 +186,7 @@ export function Home() {
             {stores.slice(0, 4).map((s) => (
               <button key={s.slug} className="st-card" onClick={() => nav(`/stores/${s.slug}`)}>
                 <div className="st-top">
-                  <span className="st-logo">{s.logo || '🏬'}</span>
-                  <span style={{ minWidth: 0 }}>
-                    <b>{s.storeName}</b>
-                    <span>★ {s.rating.toFixed(1)} · {s.productCount} products</span>
-                  </span>
+                  <b>{s.storeName}</b>
                 </div>
                 <div className="st-tag">{s.tagline}</div>
                 <div className="st-stats">

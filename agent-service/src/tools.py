@@ -87,8 +87,12 @@ class Tools:
             path += f"?conversationId={self.conversation_id}"
         return await self._get(path)  # {preferences, recentOrders, memory, facts, wiki}
 
-    async def upsell(self, product_id: str) -> dict | None:
-        return (await self._get(f"/catalog/{product_id}/upsell")).get("upsell")
+    async def upsell(self, product_id: str, ceiling_paise: int | None = None) -> dict | None:
+        q = f"?ceilingPaise={int(ceiling_paise)}" if ceiling_paise else ""
+        return (await self._get(f"/catalog/{product_id}/upsell{q}")).get("upsell")
+
+    async def variant(self, variant_id: str) -> dict:
+        return (await self._get(f"/catalog/variant/{variant_id}")).get("variant", {})
 
     async def cross_sell(self, product_id: str) -> list[dict]:
         return (await self._get(f"/catalog/{product_id}/cross-sell")).get("crossSell", [])

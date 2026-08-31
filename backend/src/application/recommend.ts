@@ -94,10 +94,33 @@ function mapRow(r: any): Product {
 
 const rupees = (paise: number) => `₹${(paise / 100).toFixed(0)}`;
 
-// UPSELL: a better version of the same thing. "Better" is rating first, price
-// second — trading a customer up to something worse but pricier is a bad deal
-// for them and a returned item for the merchant.
-export async function getUpsell(productId: string): Promise<Suggestion | null> {
+// UPSELL: the NEXT step up, not the best thing in the category.
+//
+// The previous version required `p.rating > base.rating`, which sounds sensible
+// and is quietly broken: the top-rated product in a category can never satisfy
+// it, so the single item most worth trading up from returned nothing at all. A
+// customer settling on the 4.9-rated Puma was offered no alternative, because
+// nothing is rated higher than the best.
+//
+// Rating is therefore a TOLERANCE, not a requirement. Trading up rarely means
+// trading to a better score — it usually means more product for a little more
+// money. What it must never mean is a materially worse one.
+//
+// The ordering changed too. `ORDER BY rating DESC` reached for the biggest jump
+// it was allowed; ordering by price ascending returns the item on the next
+// shelf, which is the only suggestion a customer is likely to act on.
+const STEP_MIN_RATIO = 1.05;      // ₹2 more is not a trade-up
+const STEP_MAX_RATIO = 1.40;      // strictly under +40%: the next shelf, not a different budget
+const STEP_MAX_PAISE = 500000;    // ...and never more than ₹5,000 more, whatever the ratio allows
+const RATING_TOLERANCE = 0.3;     // 4.69 against 4.90 is fine; 3.88 is not
+
+export interface UpsellOpts {
+  /** A hard ceiling from the caller — a budget the customer stated aloud, or
+   *  their spend limit. Applied on top of the ratio, never instead of it. */
+  ceilingPaise?: number;
+}
+
+export async function getUpsell(productId: string, opts: UpsellOpts = {}): Promise<Suggestion | null> {
   const { rows } = await query<any>(
     `SELECT ${SELECT}
        FROM products p ${SELLER} JOIN products base ON base.id = $1
@@ -105,22 +128,27 @@ export async function getUpsell(productId: string): Promise<Suggestion | null> {
         AND p.id <> base.id
         AND p.status = 'active'
         AND p.stock > 0
-        AND p.rating > base.rating
-        AND p.price_paise > base.price_paise
-        AND p.price_paise <= base.price_paise * 2.5   -- a step up, not a different budget
-      ORDER BY (p.rating - base.rating) DESC, p.price_paise ASC
+        AND p.price_paise >= base.price_paise * ${STEP_MIN_RATIO}
+        AND p.price_paise <  LEAST(base.price_paise * ${STEP_MAX_RATIO},
+                                   base.price_paise + ${STEP_MAX_PAISE},
+                                   COALESCE($2::bigint, 9223372036854775807))
+        AND p.rating >= base.rating - ${RATING_TOLERANCE}
+      ORDER BY p.price_paise ASC, p.rating DESC
       LIMIT 1`,
-    [productId],
+    [productId, opts.ceilingPaise ?? null],
   );
   if (!rows.length) return null;
   const base = await getProduct(productId);
   const product = mapRow(rows[0]);
   const extra = product.pricePaise - base.pricePaise;
-  return {
-    product,
-    via: 'similar',
-    reason: `rated ${product.rating.toFixed(1)}★ against ${base.rating.toFixed(1)}★, for ${rupees(extra)} more`,
-  };
+  // Only claim it is better rated when it actually is. Where it is not, the
+  // honest line is the price difference and the score — the prompt tells the
+  // assistant to make the case from the product itself, or not at all. A
+  // fabricated superlative here is a lie the customer pays for.
+  const reason = product.rating > base.rating
+    ? `rated ${product.rating.toFixed(1)}★ against ${base.rating.toFixed(1)}★, for ${rupees(extra)} more`
+    : `${rupees(extra)} more, also rated ${product.rating.toFixed(1)}★`;
+  return { product, via: 'similar', reason };
 }
 
 // CROSS-SELL: things that go WITH this, never more of the same.

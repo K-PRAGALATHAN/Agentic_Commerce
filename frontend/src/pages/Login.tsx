@@ -111,7 +111,6 @@ export function Login() {
       {/* Right: the form. */}
       <main className="lg-form">
         <div className="lg-inner">
-          <span className="lg-star">{I.asterisk()}</span>
           <h1>{heading}</h1>
           <p className="lg-sub">{sub}</p>
 

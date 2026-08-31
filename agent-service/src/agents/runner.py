@@ -36,7 +36,13 @@ async def handle(user_id: str, message: str, tools, *, is_merchant: bool) -> dic
         memory.episodic_block(ctx.get("recentOrders", []), ctx.get("memory", []), ctx.get("facts", [])),
     ]))
 
-    registry = (merchant_tools if is_merchant else customer_tools).build(tools)
+    # The customer registry gets an identity so its tools can carry state
+    # between turns; the merchant one deliberately does not. A merchant stocking
+    # a shelf is not a shopper settling on a purchase, and the narrower signature
+    # is the cheapest possible guarantee that the trade-up gate can never reach
+    # them.
+    registry = (merchant_tools.build(tools) if is_merchant
+                else customer_tools.build(tools, user_id=user_id, run_id=run_id))
     messages = [*memory.history(user_id, 6, convo)[:-1], {"role": "user", "content": message}]
 
     await trace.log(tools, run_id, "orchestrator",
